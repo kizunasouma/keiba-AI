@@ -62,9 +62,9 @@ jobs:
       postgres:
         image: postgres:16
         env:
-          POSTGRES_USER: keiba_user
-          POSTGRES_PASSWORD: keiba_pass
-          POSTGRES_DB: keiba_db
+          POSTGRES_USER: test_user
+          POSTGRES_PASSWORD: test_password_ci
+          POSTGRES_DB: keiba_test
         ports:
           - 5432:5432
         options: >-
@@ -90,12 +90,12 @@ jobs:
         run: poetry run alembic upgrade head
         working-directory: backend
         env:
-          DATABASE_URL: "postgresql://keiba_user:keiba_pass@localhost:5432/keiba_db"
+          DATABASE_URL: "postgresql://test_user:test_password_ci@localhost:5432/keiba_test"
 
       - name: 結合テスト実行
         run: poetry run python -m pytest backend/tests/ -v --ignore=backend/tests/test_features.py
         env:
-          DATABASE_URL: "postgresql://keiba_user:keiba_pass@localhost:5432/keiba_db"
+          DATABASE_URL: "postgresql://test_user:test_password_ci@localhost:5432/keiba_test"
         continue-on-error: true
 
   frontend-check:

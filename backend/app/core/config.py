@@ -6,8 +6,8 @@ from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    # データベース接続URL
-    database_url: str = "postgresql://keiba_user:keiba_pass@localhost:5432/keiba_db"
+    # データベース接続URL（.envから読み込み）
+    database_url: str = "postgresql://localhost:5432/keiba_db"
 
     # JV-Link利用キー（JRA-VANで取得した17桁）
     jvlink_service_key: str = "UNKNOWN"

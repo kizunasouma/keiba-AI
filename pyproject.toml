@@ -3,7 +3,7 @@ name = "keiba-ai"
 version = "0.1.0"
 description = ""
 authors = [
-    {name = "kizunasouma",email = "kizunasouma0907@gmail.com"}
+    {name = "kizunasouma"}
 ]
 requires-python = ">=3.13"
 dependencies = [
