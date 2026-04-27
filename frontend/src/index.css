@@ -1,0 +1,159 @@
+@import "tailwindcss";
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, 'Segoe UI', sans-serif;
+  font-size: 15px;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* === ダークモード配色改善 ===
+ * デフォルトのgray系は純粋なグレーで暗すぎるため、
+ * .dark時にslate寄り（青みのあるダークグレー）に上書きする。
+ * コントラスト向上 + 単調さ軽減が目的。
+ * ライトモードには影響しない。
+ */
+.dark {
+  /* 背景系: Slack/Discord風の明るめダーク */
+  --color-gray-950: oklch(22% 0.012 260);     /* ヘッダー・最暗部 */
+  --color-gray-900: oklch(26% 0.012 260);     /* メイン背景 */
+  --color-gray-800: oklch(32% 0.012 260);     /* カード背景 */
+
+  /* ボーダー・区切り線 */
+  --color-gray-700: oklch(40% 0.010 260);     /* ボーダー */
+  --color-gray-600: oklch(48% 0.010 260);     /* セカンダリボーダー */
+
+  /* テキスト系 */
+  --color-gray-500: oklch(58% 0.012 260);     /* サブテキスト */
+  --color-gray-400: oklch(68% 0.008 260);     /* 補助テキスト */
+  --color-gray-300: oklch(80% 0.006 260);     /* セカンダリテキスト */
+  --color-gray-200: oklch(90% 0.004 260);     /* メインテキスト */
+  --color-gray-100: oklch(96% 0.003 260);     /* ほぼ白 */
+  --color-gray-50: oklch(98% 0.002 260);      /* 白 */
+}
+
+#root {
+  height: 100vh;
+  width: 100%;
+}
+
+/* === トランジション・アニメーション === */
+
+/* フェードイン（カード・セクション表示時） */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* スライドアップ（モーダル・パネル） */
+@keyframes slideUp {
+  from { opacity: 0; transform: translateY(20px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* パルス（ローディング・注目アイテム） */
+@keyframes pulse-soft {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.7; }
+}
+
+.animate-fade-in {
+  animation: fadeIn 0.3s ease-out both;
+}
+
+.animate-slide-up {
+  animation: slideUp 0.3s ease-out both;
+}
+
+.animate-pulse-soft {
+  animation: pulse-soft 2s ease-in-out infinite;
+}
+
+/* カードホバーエフェクト */
+.card-hover {
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.card-hover:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.1);
+}
+.dark .card-hover:hover {
+  box-shadow: 0 8px 25px rgba(0, 0, 0, 0.3);
+}
+
+/* スタッガードアニメーション（リストアイテムに遅延） */
+.stagger-1 { animation-delay: 0.05s; }
+.stagger-2 { animation-delay: 0.1s; }
+.stagger-3 { animation-delay: 0.15s; }
+.stagger-4 { animation-delay: 0.2s; }
+.stagger-5 { animation-delay: 0.25s; }
+.stagger-6 { animation-delay: 0.3s; }
+
+/* === 印刷用スタイル === */
+@media print {
+  /* ナビゲーション・ヘッダー・フローティングウィンドウ操作を非表示 */
+  header,
+  nav,
+  .print\\:hidden {
+    display: none !important;
+  }
+
+  /* フローティングウィンドウのリサイズハンドル・ボタン群を非表示 */
+  [class*="resize"],
+  button {
+    display: none !important;
+  }
+
+  /* テーブル・カード内のボタンは表示しない */
+  table button,
+  .rounded-xl button,
+  .rounded-2xl button {
+    display: none !important;
+  }
+
+  /* 最小化タスクバーを非表示 */
+  [class*="z-\\[9999\\]"] {
+    display: none !important;
+  }
+
+  /* 背景色を白に統一 */
+  body,
+  #root,
+  div {
+    background-color: white !important;
+    color: black !important;
+  }
+
+  /* テーブルとカードは表示 */
+  table {
+    display: table !important;
+    border-collapse: collapse;
+    width: 100%;
+  }
+  table th,
+  table td {
+    border: 1px solid #ddd;
+    padding: 4px 8px;
+    color: black !important;
+    background-color: white !important;
+  }
+
+  /* フローティングウィンドウを印刷時はフルサイズで表示 */
+  [style*="position: absolute"] {
+    position: static !important;
+    width: 100% !important;
+    height: auto !important;
+    box-shadow: none !important;
+  }
+
+  /* 不要な装飾を除去 */
+  .shadow-sm,
+  .shadow,
+  .shadow-lg {
+    box-shadow: none !important;
+  }
+}

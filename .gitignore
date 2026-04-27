@@ -1,0 +1,63 @@
+# Claude Code
+.claude/
+CLAUDE.md
+
+# ドキュメント・資料（README.mdは除外）
+docs/
+*.pdf
+*.md
+!README.md
+!frontend/README.md
+
+# 環境変数・機密情報
+.env
+.env.*
+!.env.example
+backend/.env
+**/credentials*
+**/secret*
+**/*.pem
+**/*.key
+
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+dist/
+build/
+.venv/
+
+# モデルファイル（サイズが大きい）
+models/*.pkl
+backend/models/*.pkl
+
+# C#ビルド成果物
+backend/bridge/**/bin/
+backend/bridge/**/obj/
+
+# CatBoost学習キャッシュ
+backend/catboost_info/
+
+# データステージング
+backend/data/
+
+# Electronビルド出力
+frontend/dist-electron/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Node.js（フロントエンド）
+node_modules/
+frontend/dist/
+frontend/build/
+
+# ログ
+*.log
+logs/

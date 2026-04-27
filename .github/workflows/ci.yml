@@ -1,0 +1,124 @@
+name: CI
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+jobs:
+  lint:
+    name: Lint & 型チェック
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 3.13 セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Poetry インストール
+        run: pip install poetry
+
+      - name: 依存関係インストール
+        run: poetry install --with dev
+        working-directory: .
+
+      - name: Ruff リンター実行
+        run: poetry run ruff check backend/
+        continue-on-error: true
+
+      - name: Ruff フォーマットチェック
+        run: poetry run ruff format --check backend/
+        continue-on-error: true
+
+  test-unit:
+    name: ユニットテスト（DB不要）
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 3.13 セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Poetry インストール
+        run: pip install poetry
+
+      - name: 依存関係インストール
+        run: poetry install --with dev
+
+      - name: ユニットテスト実行（DB不要のテストのみ）
+        run: poetry run python -m pytest backend/tests/test_features.py -v
+        env:
+          DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+
+  test-integration:
+    name: 結合テスト（PostgreSQL使用）
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: keiba_user
+          POSTGRES_PASSWORD: keiba_pass
+          POSTGRES_DB: keiba_db
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Python 3.13 セットアップ
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Poetry インストール
+        run: pip install poetry
+
+      - name: 依存関係インストール
+        run: poetry install --with dev
+
+      - name: DBマイグレーション実行
+        run: poetry run alembic upgrade head
+        working-directory: backend
+        env:
+          DATABASE_URL: "postgresql://keiba_user:keiba_pass@localhost:5432/keiba_db"
+
+      - name: 結合テスト実行
+        run: poetry run python -m pytest backend/tests/ -v --ignore=backend/tests/test_features.py
+        env:
+          DATABASE_URL: "postgresql://keiba_user:keiba_pass@localhost:5432/keiba_db"
+        continue-on-error: true
+
+  frontend-check:
+    name: フロントエンドチェック
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Node.js セットアップ
+        uses: actions/setup-node@v4
+        with:
+          node-version: "20"
+
+      - name: 依存関係インストール
+        run: npm ci
+
+      - name: TypeScriptコンパイルチェック
+        run: npx tsc --noEmit
+        continue-on-error: true
+
+      - name: ビルド
+        run: npm run build
+        continue-on-error: true

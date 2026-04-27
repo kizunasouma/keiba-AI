@@ -1,0 +1,13 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <PlatformTarget>x86</PlatformTarget>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <Encoding>utf-8</Encoding>
+    <!-- JV-Link COM (JVDTLab) は32bit DLLのためx86必須 -->
+  </PropertyGroup>
+
+</Project>
