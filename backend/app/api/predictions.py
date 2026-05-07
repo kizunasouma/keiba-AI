@@ -771,6 +771,10 @@ def backtest_summary(
         race_label = f"{venue}{meta['race_num']}R"
         dt = str(meta["race_date"])
 
+        # 人気別の概算勝率（バックテスト用）
+        pop_win_rates = {1: 0.33, 2: 0.19, 3: 0.13, 4: 0.10, 5: 0.07,
+                         6: 0.05, 7: 0.04, 8: 0.03}
+
         # === 単勝: 1-3番人気で最もEV+の馬 ===
         candidates = by_odds[:3]  # 上位3頭を候補に
         best_candidate = None
@@ -785,10 +789,9 @@ def backtest_summary(
                 best_candidate = cand
         best = best_candidate or by_odds[0]
         odds = float(best["odds_win"])
+        win_prob = 0.0  # 複勝計算でも参照するため事前定義
         if odds >= min_odds and odds <= max_odds:
             pop = int(best.get("popularity", 1) or 1)
-            pop_win_rates = {1: 0.33, 2: 0.19, 3: 0.13, 4: 0.10, 5: 0.07,
-                             6: 0.05, 7: 0.04, 8: 0.03}
             win_prob = pop_win_rates.get(pop, 0.02)
             ev = win_prob * odds - 1
             if ev >= ev_threshold:
@@ -817,7 +820,7 @@ def backtest_summary(
 
         # === 複勝: 1番人気 ===
         if odds >= min_odds:
-            place_prob = min(win_prob * 2.5, 0.95) if 'win_prob' in dir() else 0.3
+            place_prob = min(win_prob * 2.5, 0.95) if win_prob > 0 else 0.3
             place_odds = max(odds * 0.3, 1.1)
             place_ev = place_prob * place_odds - 1
             if place_ev >= ev_threshold * 0.5:  # 複勝は閾値緩め

@@ -17,6 +17,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: "pip"
 
       - name: Poetry インストール
         run: pip install poetry
@@ -43,6 +44,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: "pip"
 
       - name: Poetry インストール
         run: pip install poetry
@@ -51,9 +53,16 @@ jobs:
         run: poetry install --with dev
 
       - name: ユニットテスト実行（DB不要のテストのみ）
-        run: poetry run python -m pytest backend/tests/test_features.py -v
+        run: poetry run python -m pytest backend/tests/test_features.py -v --cov=backend/app --cov-report=xml
         env:
           DATABASE_URL: "postgresql://dummy:dummy@localhost:5432/dummy"
+
+      - name: カバレッジレポートをアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-unit
+          path: coverage.xml
 
   test-integration:
     name: 結合テスト（PostgreSQL使用）
@@ -79,6 +88,7 @@ jobs:
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
+          cache: "pip"
 
       - name: Poetry インストール
         run: pip install poetry
@@ -93,9 +103,16 @@ jobs:
           DATABASE_URL: "postgresql://test_user:test_password_ci@localhost:5432/keiba_test"
 
       - name: 結合テスト実行
-        run: poetry run python -m pytest backend/tests/ -v --ignore=backend/tests/test_features.py
+        run: poetry run python -m pytest backend/tests/ -v --ignore=backend/tests/test_features.py --cov=backend/app --cov-report=xml
         env:
           DATABASE_URL: "postgresql://test_user:test_password_ci@localhost:5432/keiba_test"
+
+      - name: カバレッジレポートをアップロード
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-integration
+          path: coverage.xml
 
   frontend-check:
     name: フロントエンドチェック
@@ -110,6 +127,8 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "20"
+          cache: "npm"
+          cache-dependency-path: "frontend/package-lock.json"
 
       - name: 依存関係インストール
         run: npm ci
