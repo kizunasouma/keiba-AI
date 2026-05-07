@@ -286,6 +286,24 @@ def get_race_entries(race_key: str, db: Session = Depends(get_db)):
         .all()
     )
 
+    # odds_win=0（未確定）の場合、odds_snapshotsから最新オッズを取得
+    entry_ids = [e.id for e in entries]
+    snapshot_odds_map: dict[int, dict] = {}
+    if entry_ids:
+        sql = text("""
+            SELECT DISTINCT ON (os.entry_id)
+                os.entry_id, os.odds_win, os.odds_place_min, os.odds_place_max
+            FROM odds_snapshots os
+            WHERE os.entry_id = ANY(:ids) AND os.odds_win > 0
+            ORDER BY os.entry_id, os.snapshot_type DESC
+        """)
+        for row in db.execute(sql, {"ids": entry_ids}).mappings():
+            snapshot_odds_map[row["entry_id"]] = {
+                "odds_win": float(row["odds_win"]),
+                "odds_place_min": float(row["odds_place_min"]) if row["odds_place_min"] else None,
+                "odds_place_max": float(row["odds_place_max"]) if row["odds_place_max"] else None,
+            }
+
     # 前走の騎手IDを調べるための一括クエリ
     horse_ids = [e.horse_id for e in entries if e.horse_id]
     prev_jockey_map: dict[int, int | None] = {}
@@ -390,9 +408,12 @@ def get_race_entries(race_key: str, db: Session = Depends(get_db)):
             "weight_carry":   float(e.weight_carry) if e.weight_carry else None,
             "horse_weight":   e.horse_weight,
             "weight_diff":    e.weight_diff,
-            "odds_win":       float(e.odds_win) if e.odds_win else None,
-            "odds_place_min": float(e.odds_place_min) if e.odds_place_min else None,
-            "odds_place_max": float(e.odds_place_max) if e.odds_place_max else None,
+            "odds_win":       (float(e.odds_win) if e.odds_win is not None and float(e.odds_win) > 0
+                              else snapshot_odds_map.get(e.id, {}).get("odds_win")),
+            "odds_place_min": (float(e.odds_place_min) if e.odds_place_min is not None and float(e.odds_place_min) > 0
+                              else snapshot_odds_map.get(e.id, {}).get("odds_place_min")),
+            "odds_place_max": (float(e.odds_place_max) if e.odds_place_max is not None and float(e.odds_place_max) > 0
+                              else snapshot_odds_map.get(e.id, {}).get("odds_place_max")),
             "popularity":     e.popularity,
             "finish_order":   e.finish_order,
             "finish_time":    e.finish_time,

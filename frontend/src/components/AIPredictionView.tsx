@@ -48,24 +48,31 @@ export default function AIPredictionView({ onOpenRace }: Props) {
     queryFn: () => fetchRaces({ race_date: selectedDate, limit: 100 }),
   })
 
-  // 全レースの予測を並行取得
+  // 全レースの予測を並行取得（同時3件ずつで負荷制御）
   const raceKeys = races?.map(r => r.race_key) ?? []
   const predQueries = useQuery({
     queryKey: ['ai-all-preds', selectedDate, raceKeys.join(',')],
     queryFn: async () => {
       if (raceKeys.length === 0) return []
-      const results = await Promise.allSettled(
-        raceKeys.map(async rk => {
-          const pred = await fetchPredictions(rk)
-          const race = races!.find(r => r.race_key === rk)
-          return { raceKey: rk, race, predictions: pred }
-        })
-      )
+      const results: any[] = []
+      const CONCURRENCY = 3
+      for (let i = 0; i < raceKeys.length; i += CONCURRENCY) {
+        const batch = raceKeys.slice(i, i + CONCURRENCY)
+        const batchResults = await Promise.allSettled(
+          batch.map(async rk => {
+            const pred = await fetchPredictions(rk)
+            const race = races!.find(r => r.race_key === rk)
+            return { raceKey: rk, race, predictions: pred }
+          })
+        )
+        results.push(...batchResults)
+      }
       return results
         .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
         .map(r => r.value)
     },
     enabled: raceKeys.length > 0,
+    staleTime: 5 * 60 * 1000, // 5分間キャッシュ
   })
 
   // 全レース横断で期待値ランキング

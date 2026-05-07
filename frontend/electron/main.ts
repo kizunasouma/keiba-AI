@@ -29,14 +29,14 @@ function detectPythonPath(): string {
     return process.env.KEIBA_PYTHON_PATH
   }
 
-  // PATH上のpythonを検索（Windowsでは where コマンドを使用）
+  // PATH上のpythonを検索（64bitを優先、32bitは除外）
   try {
     const found = execSync('where python', { encoding: 'utf-8', timeout: 5000 })
       .split(/\r?\n/)
       .map(l => l.trim())
-      .filter(l => l.length > 0)
+      .filter(l => l.length > 0 && !l.includes('32'))
     if (found.length > 0) {
-      console.log(`[Python] PATH上で検出: ${found[0]}`)
+      console.log(`[Python] PATH上で検出(64bit優先): ${found[0]}`)
       return found[0]
     }
   } catch {

@@ -10,6 +10,8 @@
 from collections import defaultdict
 from datetime import date
 from enum import Enum
+from functools import lru_cache
+import time
 
 from fastapi import APIRouter, Depends, HTTPException, Query
 from pydantic import BaseModel
@@ -19,6 +21,10 @@ from sqlalchemy.orm import Session
 from app.core.database import get_db
 from app.ml.features import build_prediction_features
 from app.ml.model import get_model
+
+# 予測結果のインメモリキャッシュ（race_key → (timestamp, response)）
+_prediction_cache: dict[str, tuple[float, "PredictionResponse"]] = {}
+_CACHE_TTL = 300  # 5分間キャッシュ
 
 
 # ---------------------------------------------------------------------------
@@ -185,6 +191,13 @@ class SimulateRequest(BaseModel):
 @router.get("/races/{race_key}/predict", response_model=PredictionResponse)
 def predict_race(race_key: str, db: Session = Depends(get_db)):
     """指定レースの全出走馬に対して勝率・期待値を予測する"""
+    # キャッシュチェック（TTL内なら即返却）
+    now = time.time()
+    if race_key in _prediction_cache:
+        cached_time, cached_response = _prediction_cache[race_key]
+        if now - cached_time < _CACHE_TTL:
+            return cached_response
+
     model = get_model()
 
     if not model.is_trained:
@@ -246,7 +259,7 @@ def predict_race(race_key: str, db: Session = Depends(get_db)):
                 confidence=ticket.confidence,
             )
 
-    return PredictionResponse(
+    response = PredictionResponse(
         race_key=race_key,
         model_available=True,
         model_type="ensemble" if is_ensemble else "legacy",
@@ -255,6 +268,9 @@ def predict_race(race_key: str, db: Session = Depends(get_db)):
         total_invest=race_plan.total_invest,
         total_expected_return=race_plan.total_expected_return,
     )
+    # キャッシュに保存（5分間有効）
+    _prediction_cache[race_key] = (time.time(), response)
+    return response
 
 
 def _generate_race_betting_plan(

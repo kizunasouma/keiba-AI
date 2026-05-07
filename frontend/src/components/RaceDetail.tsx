@@ -544,7 +544,7 @@ export default function RaceDetail({ raceKey, onNavigateHorse, onNavigateJockey,
   const { data: race, isLoading: rl, isError: rErr, refetch: refetchRace } = useQuery<RaceInfo>({ queryKey: ['race', raceKey], queryFn: () => fetchRace(raceKey), retry: 1 })
   const { data: entries, isLoading: el } = useQuery<Entry[]>({ queryKey: ['entries', raceKey], queryFn: () => fetchEntries(raceKey), retry: 1 })
   // 遅延ロード（タブ切替時に取得）
-  const { data: pred } = useQuery<PredictionResponse>({ queryKey: ['predict', raceKey], queryFn: () => fetchPredictions(raceKey), retry: false, enabled: tab === 'ai_detail' || tab === 'table' })
+  const { data: pred } = useQuery<PredictionResponse>({ queryKey: ['predict', raceKey], queryFn: () => fetchPredictions(raceKey), retry: false, enabled: tab === 'ai_detail' || tab === 'table', staleTime: 5 * 60 * 1000 })
   const { data: laps } = useQuery<LapData>({ queryKey: ['laps', raceKey], queryFn: () => fetchLaps(raceKey), retry: false, enabled: tab === 'analysis' })
   const { data: payoutData } = useQuery<PayoutData>({ queryKey: ['payouts', raceKey], queryFn: () => fetchPayouts(raceKey), retry: false, enabled: tab === 'payouts' })
   // 調教AI評価（出馬表タブで使用）

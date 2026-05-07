@@ -122,7 +122,7 @@ class Program
         }
         Log($"JVInit: {ret}");
 
-        // JVSetServiceKey（利用キー）
+        // JVSetServiceKey（利用キー）— エラーでもJVOpenは通る場合があるため続行
         if (!string.IsNullOrEmpty(serviceKey))
         {
             string key = serviceKey.Replace("-", "");

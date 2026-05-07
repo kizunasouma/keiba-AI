@@ -340,6 +340,12 @@ def build_training_dataset(db: Session) -> pd.DataFrame:
     if not _skip_heavy:
         df = _add_v6_trend_features(db, df)
         df = _add_v6_jockey_trainer_combo(db, df)
+    else:
+        # 学習時（大量データ）は重いクエリをスキップしデフォルト値を使用
+        if "recent_win_trend" not in df.columns:
+            df["recent_win_trend"] = 0.0
+        if "jockey_trainer_combo_rate" not in df.columns:
+            df["jockey_trainer_combo_rate"] = 0.0
     df = _add_v6_pace_style_fit(df)
 
     # 全特徴量カラムを数値型に強制変換（バッチ結合時のobject型混入対策）
