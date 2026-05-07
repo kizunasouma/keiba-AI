@@ -96,7 +96,6 @@ jobs:
         run: poetry run python -m pytest backend/tests/ -v --ignore=backend/tests/test_features.py
         env:
           DATABASE_URL: "postgresql://test_user:test_password_ci@localhost:5432/keiba_test"
-        continue-on-error: true
 
   frontend-check:
     name: フロントエンドチェック
@@ -117,8 +116,6 @@ jobs:
 
       - name: TypeScriptコンパイルチェック
         run: npx tsc --noEmit
-        continue-on-error: true
 
       - name: ビルド
         run: npm run build
-        continue-on-error: true

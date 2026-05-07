@@ -35,6 +35,10 @@ backend/models/*.pkl
 backend/bridge/**/bin/
 backend/bridge/**/obj/
 
+# デバッグ・動作確認用スクリプト
+backend/test_*.py
+backend/check_*.py
+
 # CatBoost学習キャッシュ
 backend/catboost_info/
 

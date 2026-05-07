@@ -1,7 +1,9 @@
 {
-  "name": "frontend",
+  "name": "keiba-ai-frontend",
   "private": true,
-  "version": "0.0.0",
+  "version": "1.0.0",
+  "description": "競馬AI予測アプリ - フロントエンド（Electron + React + TypeScript）",
+  "repository": "https://github.com/kizunasouma/keiba-AI",
   "type": "module",
   "main": "dist-electron/main.js",
   "scripts": {

@@ -1,7 +1,7 @@
 [project]
 name = "keiba-ai"
 version = "0.1.0"
-description = ""
+description = "JV-Link公式データ × AI機械学習による競馬予測システム"
 authors = [
     {name = "kizunasouma"}
 ]
