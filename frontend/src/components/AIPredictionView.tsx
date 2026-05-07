@@ -6,6 +6,25 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchRaces, fetchPredictions, fetchEntries, fetchBacktestSummary } from '../api/client'
 import { toFullWidth } from '../utils/format'
+import type { RaceInfo, PredictionItem, PredictionResponse, BacktestSummary, BetHistoryItem, DailyResult } from '../types'
+
+/** レース横断の予測アイテム（PredictionItem + レース情報） */
+interface RankedPrediction extends PredictionItem {
+  raceKey: string; raceLabel: string; raceName: string | null
+  distance: number; trackType: number
+}
+
+/** レース別の推奨買い目 */
+interface RaceBet {
+  raceKey: string; label: string; name: string | null
+  distance: number; trackType: number; grade: number | null
+  top3: PredictionItem[]; evPositive: PredictionItem[]; bestEV: number
+}
+
+/** 予測取得結果 */
+interface PredResult {
+  raceKey: string; race: RaceInfo; predictions: PredictionResponse
+}
 
 interface Props {
   onOpenRace: (raceKey: string, title?: string) => void
@@ -43,7 +62,7 @@ export default function AIPredictionView({ onOpenRace }: Props) {
   }, [])
 
   // その日のレースを取得
-  const { data: races } = useQuery<any[]>({
+  const { data: races } = useQuery<RaceInfo[]>({
     queryKey: ['ai-races', selectedDate],
     queryFn: () => fetchRaces({ race_date: selectedDate, limit: 100 }),
   })
@@ -54,7 +73,7 @@ export default function AIPredictionView({ onOpenRace }: Props) {
     queryKey: ['ai-all-preds', selectedDate, raceKeys.join(',')],
     queryFn: async () => {
       if (raceKeys.length === 0) return []
-      const results: any[] = []
+      const results: PromiseSettledResult<PredResult>[] = []
       const CONCURRENCY = 3
       for (let i = 0; i < raceKeys.length; i += CONCURRENCY) {
         const batch = raceKeys.slice(i, i + CONCURRENCY)
@@ -68,7 +87,7 @@ export default function AIPredictionView({ onOpenRace }: Props) {
         results.push(...batchResults)
       }
       return results
-        .filter((r): r is PromiseFulfilledResult<any> => r.status === 'fulfilled')
+        .filter((r): r is PromiseFulfilledResult<PredResult> => r.status === 'fulfilled')
         .map(r => r.value)
     },
     enabled: raceKeys.length > 0,
@@ -78,7 +97,7 @@ export default function AIPredictionView({ onOpenRace }: Props) {
   // 全レース横断で期待値ランキング
   const allPredictions = useMemo(() => {
     if (!predQueries.data) return []
-    const items: any[] = []
+    const items: RankedPrediction[] = []
     for (const { raceKey, race, predictions } of predQueries.data) {
       if (!predictions?.predictions) continue
       const vn = VENUE[race?.venue_code] ?? ''
@@ -112,9 +131,9 @@ export default function AIPredictionView({ onOpenRace }: Props) {
       .filter(d => d.predictions?.model_available)
       .map(({ raceKey, race, predictions }) => {
         const vn = VENUE[race?.venue_code] ?? ''
-        const sorted = [...(predictions.predictions || [])].sort((a: any, b: any) => b.expected_value - a.expected_value)
+        const sorted = [...(predictions.predictions || [])].sort((a: PredictionItem, b: PredictionItem) => b.expected_value - a.expected_value)
         const top3 = sorted.slice(0, 3)
-        const evPositive = sorted.filter((p: any) => (p.expected_value ?? -999) > 0)
+        const evPositive = sorted.filter((p: PredictionItem) => (p.expected_value ?? -999) > 0)
         return {
           raceKey,
           label: `${vn}${race?.race_num}R`,
@@ -269,7 +288,7 @@ export default function AIPredictionView({ onOpenRace }: Props) {
 
                   {/* TOP3 */}
                   <div className="flex gap-3 mb-3">
-                    {rb.top3.map((p: any, i: number) => (
+                    {rb.top3.map((p: PredictionItem, i: number) => (
                       <div key={p.horse_num} className={`flex-1 rounded-lg p-2 text-center ${i === 0 ? 'bg-emerald-50 dark:bg-emerald-900/40 border border-emerald-300 dark:border-emerald-700/50' : 'bg-gray-100 dark:bg-gray-700/50'}`}>
                         <div className={`text-sm font-bold ${i === 0 ? 'text-emerald-600 dark:text-emerald-400' : 'text-gray-400'}`}>
                           {['◎', '○', '▲'][i]}
@@ -290,10 +309,10 @@ export default function AIPredictionView({ onOpenRace }: Props) {
                     <div className="text-xs text-gray-500 dark:text-gray-400 space-y-0.5 border-t border-gray-200 dark:border-gray-700 pt-2">
                       <div><span className="text-gray-400 dark:text-gray-500">単勝:</span> <span className="text-gray-900 dark:text-white font-medium">{rb.evPositive[0]?.horse_num}番</span></div>
                       {rb.evPositive.length >= 2 && (
-                        <div><span className="text-gray-400 dark:text-gray-500">馬連:</span> <span className="text-gray-900 dark:text-white font-medium">{rb.evPositive.slice(0, 2).map((p: any) => p.horse_num).sort((a: number, b: number) => a - b).join('-')}</span></div>
+                        <div><span className="text-gray-400 dark:text-gray-500">馬連:</span> <span className="text-gray-900 dark:text-white font-medium">{rb.evPositive.slice(0, 2).map((p: PredictionItem) => p.horse_num).sort((a: number, b: number) => a - b).join('-')}</span></div>
                       )}
                       {rb.evPositive.length >= 3 && (
-                        <div><span className="text-gray-400 dark:text-gray-500">三連複:</span> <span className="text-gray-900 dark:text-white font-medium">{rb.evPositive.slice(0, 3).map((p: any) => p.horse_num).sort((a: number, b: number) => a - b).join('-')}</span></div>
+                        <div><span className="text-gray-400 dark:text-gray-500">三連複:</span> <span className="text-gray-900 dark:text-white font-medium">{rb.evPositive.slice(0, 3).map((p: PredictionItem) => p.horse_num).sort((a: number, b: number) => a - b).join('-')}</span></div>
                       )}
                     </div>
                   )}
@@ -376,7 +395,7 @@ function BacktestSection() {
     if (sortKey === key) setSortAsc(!sortAsc)
     else { setSortKey(key); setSortAsc(false) }
   }
-  const sortedHistory = (bt?.bet_history ?? []).slice().sort((a: any, b: any) => {
+  const sortedHistory = (bt?.bet_history ?? []).slice().sort((a: BetHistoryItem, b: BetHistoryItem) => {
     const va = a[sortKey] ?? 0, vb = b[sortKey] ?? 0
     return sortAsc ? (va > vb ? 1 : -1) : (va < vb ? 1 : -1)
   })
@@ -446,9 +465,9 @@ function BacktestSection() {
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 p-4">
               <div className="text-xs text-gray-500 dark:text-gray-400 mb-2">日別損益</div>
               <div className="flex items-end gap-1 h-24">
-                {bt.daily.map((d: any, i: number) => {
+                {bt.daily.map((d: DailyResult, i: number) => {
                   const pnl = d.ret - d.invest
-                  const maxAbs = Math.max(...bt.daily.map((x: any) => Math.abs(x.ret - x.invest)), 1)
+                  const maxAbs = Math.max(...bt.daily.map((x: DailyResult) => Math.abs(x.ret - x.invest)), 1)
                   const h = Math.abs(pnl) / maxAbs * 100
                   return (
                     <div key={i} className="flex-1 flex flex-col items-center justify-end h-full" title={`${d.date}: ${pnl >= 0 ? '+' : ''}${pnl}円`}>
@@ -470,7 +489,7 @@ function BacktestSection() {
             <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
               <div className="px-4 py-3 border-b border-gray-100 dark:border-gray-700 flex items-center justify-between">
                 <span className="text-xs font-bold text-gray-700 dark:text-gray-200">購入履歴（直近{bt.bet_history.length}件）</span>
-                <span className="text-[10px] text-gray-400">的中={bt.bet_history.filter((h: any) => h.hit).length}件</span>
+                <span className="text-[10px] text-gray-400">的中={bt.bet_history.filter((h: BetHistoryItem) => h.hit).length}件</span>
               </div>
               <div className="overflow-x-auto max-h-[400px] overflow-y-auto">
                 <table className="w-full text-xs">
@@ -496,7 +515,7 @@ function BacktestSection() {
                     </tr>
                   </thead>
                   <tbody>
-                    {sortedHistory.map((h: any, i: number) => {
+                    {sortedHistory.map((h: BetHistoryItem, i: number) => {
                       const typeColor: Record<string, string> = {
                         '単勝': 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
                         '複勝': 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
@@ -541,7 +560,7 @@ function BacktestSection() {
 }
 
 /** レース別ケリー基準 自動計算セクション */
-function KellyAutoSection({ raceBets }: { raceBets: any[] }) {
+function KellyAutoSection({ raceBets }: { raceBets: RaceBet[] }) {
   // 各レースの推奨馬にケリー基準を自動適用
   const kellyData = raceBets
     .filter(rb => rb.evPositive.length > 0)
@@ -568,7 +587,7 @@ function KellyAutoSection({ raceBets }: { raceBets: any[] }) {
       }
     })
     .filter(Boolean)
-    .sort((a: any, b: any) => b.kelly - a.kelly)
+    .sort((a, b) => b!.kelly - a!.kelly) as NonNullable<typeof kellyData[number]>[]
 
   if (kellyData.length === 0) return null
 
@@ -596,7 +615,7 @@ function KellyAutoSection({ raceBets }: { raceBets: any[] }) {
             </tr>
           </thead>
           <tbody>
-            {kellyData.map((d: any) => (
+            {kellyData.map((d) => (
               <tr key={d.raceKey} className="border-t border-gray-100 dark:border-gray-700/50 hover:bg-gray-50 dark:hover:bg-gray-700/20">
                 <td className="px-3 py-2">
                   <div className="text-gray-700 dark:text-gray-300 font-medium">{d.label}</div>

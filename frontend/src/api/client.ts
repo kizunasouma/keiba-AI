@@ -176,7 +176,7 @@ export async function searchRaces(q: string, limit = 20) {
 
 // --- 回収率バックテスト ---
 export async function fetchBacktestSummary(days = 30, ev_threshold = 0, bet_mode = 'kelly', date_from?: string, date_to?: string) {
-  const params: any = { days, ev_threshold, bet_mode }
+  const params: Record<string, string | number> = { days, ev_threshold, bet_mode }
   if (date_from) params.date_from = date_from
   if (date_to) params.date_to = date_to
   return callApi(async () => (await apiClient.get('/backtest/summary', { params })).data)

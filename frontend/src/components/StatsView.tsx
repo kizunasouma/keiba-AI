@@ -16,7 +16,7 @@ const COND_OPT = [{ v: undefined, l: '全' }, { v: 1, l: '良' }, { v: 2, l: '�
 
 type Tab = 'sire' | 'bms' | 'frame' | 'popularity' | 'mining'
 
-function StatTable({ data, columns }: { data: any[]; columns: { key: string; label: string; align?: string; fmt?: (v: any) => string }[] }) {
+function StatTable<T extends Record<string, unknown>>({ data, columns }: { data: T[]; columns: { key: string; label: string; align?: string; fmt?: (v: unknown) => string | React.ReactNode }[] }) {
   if (!data || data.length === 0) return <div className="text-gray-500 text-sm py-8 text-center">データなし</div>
   return (
     /* 統計テーブル: 横スクロール対応 */
@@ -58,7 +58,7 @@ export default function StatsView() {
   const [mPopMax, setMPopMax] = useState<string>('')
   const [mCorner4Max, setMCorner4Max] = useState<string>('')
   const [mSire, setMSire] = useState<string>('')
-  const [mResult, setMResult] = useState<any>(null)
+  const [mResult, setMResult] = useState<Record<string, unknown>[] | null>(null)
   const [mLoading, setMLoading] = useState(false)
 
   const { data: sireData } = useQuery({ queryKey: ['stats-sire', trackFilter], queryFn: () => fetchSireStats({ track_type: trackFilter, limit: 50 }), enabled: tab === 'sire' })
@@ -86,7 +86,7 @@ export default function StatsView() {
     }
   }
 
-  const fmtRate = (v: any) => v != null ? <span className={Number(v) >= 15 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}>{v}%</span> : '-'
+  const fmtRate = (v: unknown) => v != null ? <span className={Number(v) >= 15 ? 'text-emerald-600 dark:text-emerald-400 font-bold' : ''}>{String(v)}%</span> : '-'
 
   const TABS: { key: Tab; label: string; icon: string }[] = [
     { key: 'sire', label: '種牡馬別', icon: '🐎' },
@@ -172,7 +172,7 @@ export default function StatsView() {
           {/* 枠番をビジュアル表示 */}
           <div className="p-4">
             <div className="grid grid-cols-8 gap-3">
-              {(frameData ?? []).map((f: any) => {
+              {(frameData ?? []).map((f: Record<string, unknown>) => {
                 const WAKU_BG: Record<number, string> = {
                   1:'bg-white dark:bg-gray-200 text-gray-800 border border-gray-300',2:'bg-gray-800 text-white border border-gray-600',3:'bg-red-500 text-white',4:'bg-blue-500 text-white',
                   5:'bg-yellow-400 text-gray-800',6:'bg-green-500 text-white',7:'bg-orange-500 text-white',8:'bg-pink-500 text-white'
@@ -198,7 +198,7 @@ export default function StatsView() {
           <div className="p-4">
             {/* 棒グラフ風表示 */}
             <div className="space-y-2">
-              {(popData ?? []).map((p: any) => {
+              {(popData ?? []).map((p: Record<string, unknown>) => {
                 const winRate = p.runs > 0 ? p.wins / p.runs * 100 : 0
                 const top3Rate = p.runs > 0 ? p.top3 / p.runs * 100 : 0
                 return (
