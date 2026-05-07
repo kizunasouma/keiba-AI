@@ -2,9 +2,33 @@
 FastAPI メインエントリポイント
 `uvicorn app.main:app --reload` で起動する
 """
-from fastapi import FastAPI
+import time
+import logging
+from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.base import BaseHTTPMiddleware
 from app.core.security import SecurityMiddleware
+
+# リクエストログ用ロガー
+request_logger = logging.getLogger("app.request")
+
+
+class RequestLoggingMiddleware(BaseHTTPMiddleware):
+    """リクエスト/レスポンスのログを出力するミドルウェア（所要時間・ステータスコード・パス）"""
+
+    async def dispatch(self, request: Request, call_next):
+        start = time.time()
+        response = await call_next(request)
+        elapsed_ms = (time.time() - start) * 1000
+        # メソッド、パス、ステータスコード、所要時間をINFOレベルで記録
+        request_logger.info(
+            "%s %s -> %d (%.1fms)",
+            request.method,
+            request.url.path,
+            response.status_code,
+            elapsed_ms,
+        )
+        return response
 
 from app.api.health import router as health_router
 from app.api.races import router as races_router
@@ -27,6 +51,9 @@ app = FastAPI(
 
 # セキュリティミドルウェア（SQLインジェクション・XSS防止）
 app.add_middleware(SecurityMiddleware)
+
+# リクエストログミドルウェア（所要時間・ステータスコード・パス記録）
+app.add_middleware(RequestLoggingMiddleware)
 
 # CORS設定（Electronフロントエンドからのアクセスを許可）
 app.add_middleware(

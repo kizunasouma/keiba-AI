@@ -3,8 +3,8 @@
  * AI予測サマリー → 出馬表 → 分析（ラップ/脚質/枠番/上がり3F） → 買い目 → 払戻
  */
 import { useState, useEffect, Fragment, useCallback } from 'react'
-import { useQuery } from '@tanstack/react-query'
-import { fetchRace, fetchEntries, fetchPredictions, fetchLaps, fetchPayouts, fetchTrainingRating, getExportUrl } from '../api/client'
+import { getExportUrl } from '../api/client'
+import { useRaceData, type RaceTab } from '../hooks/useRaceData'
 import BettingPanel from './BettingPanel'
 import ErrorBanner from './ErrorBanner'
 import EmptyState from './EmptyState'
@@ -537,18 +537,12 @@ function TrainingTable({ data }: { data: TrainingData[] }) {
 // --- メインコンポーネント ---
 export default function RaceDetail({ raceKey, onNavigateHorse, onNavigateJockey, onNavigateTrainer, onTitleReady }: Props) {
   const [expanded, setExpanded] = useState<Set<number>>(new Set())
-  const [tab, setTab] = useState<'table' | 'ai_detail' | 'analysis' | 'odds_trend' | 'betting' | 'payouts'>('table')
+  const [tab, setTab] = useState<RaceTab>('table')
   const [sortKey, setSortKey] = useState<SortKey>('number')
 
-  // 基本データ（常にロード）
-  const { data: race, isLoading: rl, isError: rErr, refetch: refetchRace } = useQuery<RaceInfo>({ queryKey: ['race', raceKey], queryFn: () => fetchRace(raceKey), retry: 1 })
-  const { data: entries, isLoading: el } = useQuery<Entry[]>({ queryKey: ['entries', raceKey], queryFn: () => fetchEntries(raceKey), retry: 1 })
-  // 遅延ロード（タブ切替時に取得）
-  const { data: pred } = useQuery<PredictionResponse>({ queryKey: ['predict', raceKey], queryFn: () => fetchPredictions(raceKey), retry: false, enabled: tab === 'ai_detail' || tab === 'table', staleTime: 5 * 60 * 1000 })
-  const { data: laps } = useQuery<LapData>({ queryKey: ['laps', raceKey], queryFn: () => fetchLaps(raceKey), retry: false, enabled: tab === 'analysis' })
-  const { data: payoutData } = useQuery<PayoutData>({ queryKey: ['payouts', raceKey], queryFn: () => fetchPayouts(raceKey), retry: false, enabled: tab === 'payouts' })
-  // 調教AI評価（出馬表タブで使用）
-  const { data: trainingRatingData } = useQuery<TrainingRatingResponse>({ queryKey: ['trainingRating', raceKey], queryFn: () => fetchTrainingRating(raceKey), retry: false, enabled: tab === 'table' })
+  // データフェッチ（カスタムフックに集約）
+  const { race, entries, pred, laps, payoutData, trainingRatingData, isLoading: rl, isError: rErr, refetchRace } = useRaceData(raceKey, tab)
+  const el = !entries
 
   const pm = new Map(pred?.predictions.map(p => [p.horse_num, p]) ?? [])
   // 調教評価マップ（horse_num → TrainingRatingItem）
