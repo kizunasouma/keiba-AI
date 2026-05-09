@@ -417,6 +417,118 @@ def get_track_bias(
     ]
 
 
+@router.get("/track_bias_detail")
+def get_track_bias_detail(
+    race_date: str = Query(..., description="開催日 YYYY-MM-DD"),
+    venue_code: str = Query(..., description="場コード 01-10"),
+    track_type: int | None = Query(None, description="コース種別 1=芝 2=ダート"),
+    db: Session = Depends(get_db),
+):
+    """
+    トラックバイアス詳細: 枠番バイアス + 脚質バイアスの2軸分析。
+    人気と着順の差分で実力差を除去し、純粋なバイアスを測定する。
+    過去30日の同会場・同条件データをベースに算出。
+    """
+    track_filter = "AND r2.track_type = :track_type" if track_type else ""
+    params: dict = {"race_date": race_date, "venue_code": venue_code}
+    if track_type:
+        params["track_type"] = track_type
+
+    # --- 枠番バイアス: 内枠(1-4)と外枠(5-8)のoutperformance差分 ---
+    frame_sql = text(f"""
+        WITH base AS (
+            SELECT
+                AVG(CASE WHEN re.frame_num <= 4
+                    THEN re.popularity - re.finish_order END) AS inner_op,
+                AVG(CASE WHEN re.frame_num >= 5
+                    THEN re.popularity - re.finish_order END) AS outer_op,
+                COUNT(DISTINCT r2.id) AS race_count
+            FROM races r2
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE r2.venue_code = :venue_code {track_filter}
+              AND r2.race_date BETWEEN (CAST(:race_date AS date) - 30)
+                                    AND CAST(:race_date AS date)
+              AND re.finish_order IS NOT NULL AND re.popularity IS NOT NULL
+              AND COALESCE(re.abnormal_code, 0) = 0
+        )
+        SELECT
+            ROUND((COALESCE(inner_op, 0) - COALESCE(outer_op, 0))::numeric, 2) AS score,
+            race_count
+        FROM base
+    """)
+    frame_row = db.execute(frame_sql, params).mappings().first()
+    frame_score = float(frame_row["score"]) if frame_row and frame_row["score"] else 0.0
+    frame_races = int(frame_row["race_count"]) if frame_row else 0
+
+    # --- 脚質バイアス: 先行馬と後方馬の上がり3F差 ---
+    pace_sql = text(f"""
+        WITH base AS (
+            SELECT
+                AVG(CASE WHEN re.corner_4 <= 3 THEN re.last_3f END) AS front_3f,
+                AVG(CASE WHEN re.corner_4 > r2.horse_count / 2 THEN re.last_3f END) AS back_3f,
+                COUNT(DISTINCT r2.id) AS race_count
+            FROM races r2
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE r2.venue_code = :venue_code {track_filter}
+              AND r2.race_date BETWEEN (CAST(:race_date AS date) - 30)
+                                    AND CAST(:race_date AS date)
+              AND re.finish_order IS NOT NULL
+              AND re.corner_4 IS NOT NULL AND re.corner_4 > 0
+              AND re.last_3f IS NOT NULL AND re.last_3f > 0
+              AND COALESCE(re.abnormal_code, 0) = 0
+        )
+        SELECT
+            ROUND((-(COALESCE(front_3f, 0) - COALESCE(back_3f, 0)))::numeric, 2) AS score,
+            race_count
+        FROM base
+    """)
+    pace_row = db.execute(pace_sql, params).mappings().first()
+    pace_score = float(pace_row["score"]) if pace_row and pace_row["score"] else 0.0
+    pace_races = int(pace_row["race_count"]) if pace_row else 0
+
+    # --- 信頼度判定（サンプルレース数に基づく） ---
+    sample = max(frame_races, pace_races)
+    confidence = "高" if sample >= 10 else "中" if sample >= 5 else "低"
+
+    # --- ラベル生成 ---
+    def _frame_label(s: float) -> str:
+        if s > 0.5: return "内枠有利"
+        if s > 0.2: return "やや内枠有利"
+        if s < -0.5: return "外枠有利"
+        if s < -0.2: return "やや外枠有利"
+        return "均等"
+
+    def _pace_label(s: float) -> str:
+        if s > 3.0: return "先行有利"
+        if s > 1.0: return "やや先行有利"
+        if s < -3.0: return "差し有利"
+        if s < -1.0: return "やや差し有利"
+        return "均等"
+
+    # --- サマリー文生成 ---
+    parts = []
+    if abs(frame_score) > 0.2:
+        parts.append("内枠" if frame_score > 0 else "外枠")
+    if abs(pace_score) > 1.0:
+        parts.append("先行馬" if pace_score > 0 else "差し馬")
+    summary = "の".join(parts) + "が有利な馬場" if parts else "バイアス少なめ（フラット）"
+
+    return {
+        "frame_bias": {
+            "score": frame_score,
+            "label": _frame_label(frame_score),
+            "sample_races": frame_races,
+        },
+        "pace_bias": {
+            "score": pace_score,
+            "label": _pace_label(pace_score),
+            "sample_races": pace_races,
+        },
+        "confidence": confidence,
+        "summary": summary,
+    }
+
+
 # ---------------------------------------------------------------------------
 # 対戦表（2頭の直接対決成績）
 # ---------------------------------------------------------------------------

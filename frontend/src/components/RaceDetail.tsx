@@ -3,7 +3,9 @@
  * AI予測サマリー → 出馬表 → 分析（ラップ/脚質/枠番/上がり3F） → 買い目 → 払戻
  */
 import { useState, useEffect, Fragment, useCallback } from 'react'
-import { getExportUrl } from '../api/client'
+import { useQuery } from '@tanstack/react-query'
+import { getExportUrl, fetchTrackBiasDetail } from '../api/client'
+import type { TrackBiasDetail } from '../types'
 import { useRaceData, type RaceTab } from '../hooks/useRaceData'
 import BettingPanel from './BettingPanel'
 import ErrorBanner from './ErrorBanner'
@@ -544,6 +546,15 @@ export default function RaceDetail({ raceKey, onNavigateHorse, onNavigateJockey,
   const { race, entries, pred, laps, payoutData, trainingRatingData, isLoading: rl, isError: rErr, refetchRace } = useRaceData(raceKey, tab)
   const el = !entries
 
+  // トラックバイアス（独立したuseQueryで取得）
+  const { data: trackBias } = useQuery<TrackBiasDetail>({
+    queryKey: ['trackBias', race?.race_date, race?.venue_code],
+    queryFn: () => fetchTrackBiasDetail(race!.race_date, race!.venue_code),
+    enabled: !!race?.race_date && !!race?.venue_code,
+    retry: false,
+    staleTime: 10 * 60 * 1000, // 10分キャッシュ
+  })
+
   const pm = new Map(pred?.predictions.map(p => [p.horse_num, p]) ?? [])
   // 調教評価マップ（horse_num → TrainingRatingItem）
   const trMap = new Map(trainingRatingData?.ratings.map(r => [r.horse_num, r]) ?? [])
@@ -712,6 +723,76 @@ export default function RaceDetail({ raceKey, onNavigateHorse, onNavigateJockey,
           </div>
         </div>
       )}
+
+      {/* トラックバイアスカード */}
+      {trackBias && (() => {
+        // 馬場速度ラベル判定
+        const speedLabel = trackBias.bias <= -5 ? '高速' : trackBias.bias <= -2 ? 'やや速い' : trackBias.bias <= 2 ? '標準' : trackBias.bias <= 5 ? 'やや重い' : '重い'
+        const speedColor = trackBias.bias <= -5 ? 'text-red-600 dark:text-red-400' : trackBias.bias <= -2 ? 'text-orange-500 dark:text-orange-400' : trackBias.bias <= 2 ? 'text-gray-600 dark:text-gray-300' : trackBias.bias <= 5 ? 'text-blue-500 dark:text-blue-400' : 'text-blue-700 dark:text-blue-300'
+        // 枠番ラベル判定
+        const frameLabel = trackBias.frame_bias >= 2 ? '内枠有利' : trackBias.frame_bias <= -2 ? '外枠有利' : '均等'
+        const frameColor = trackBias.frame_bias >= 2 ? 'text-red-600 dark:text-red-400' : trackBias.frame_bias <= -2 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+        // 脚質ラベル判定
+        const paceLabel = trackBias.pace_bias >= 2 ? '先行有利' : trackBias.pace_bias <= -2 ? '差し有利' : '均等'
+        const paceColor = trackBias.pace_bias >= 2 ? 'text-red-600 dark:text-red-400' : trackBias.pace_bias <= -2 ? 'text-blue-600 dark:text-blue-400' : 'text-gray-600 dark:text-gray-300'
+        // 信頼度判定（サンプル数ベース）
+        const confidence = trackBias.sample_count >= 10 ? { label: '高', color: 'text-emerald-600 dark:text-emerald-400' } : trackBias.sample_count >= 5 ? { label: '中', color: 'text-yellow-600 dark:text-yellow-400' } : { label: '低', color: 'text-gray-400 dark:text-gray-500' }
+        // バーの位置計算（-10〜+10の範囲を0〜100%に変換）
+        const clamp = (v: number) => Math.max(0, Math.min(100, (v + 10) / 20 * 100))
+
+        return (
+          <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-xl p-4 shadow-sm">
+            <div className="flex items-center gap-2 mb-3">
+              <span className="text-sm font-bold text-gray-700 dark:text-gray-200">トラックバイアス</span>
+              <span className={`text-xs ${confidence.color}`}>信頼度: {confidence.label}（過去{trackBias.analysis_days}日 {trackBias.sample_count}R）</span>
+            </div>
+            <div className="grid grid-cols-3 gap-4">
+              {/* 馬場速度 */}
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">馬場速度</div>
+                <div className={`text-sm font-bold ${speedColor}`}>{speedLabel}({trackBias.bias > 0 ? '+' : ''}{trackBias.bias.toFixed(1)})</div>
+                <div className="mt-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-full relative overflow-hidden">
+                  <div className="absolute inset-0 flex">
+                    <div className="h-full bg-gradient-to-r from-red-400 via-gray-300 to-blue-400 dark:from-red-500 dark:via-gray-500 dark:to-blue-500 w-full opacity-40" />
+                  </div>
+                  <div className="absolute top-0 h-full w-2.5 bg-gray-800 dark:bg-white rounded-full -translate-x-1/2 shadow" style={{ left: `${clamp(trackBias.bias)}%` }} />
+                </div>
+                <div className="flex justify-between text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  <span>高速</span><span>重い</span>
+                </div>
+              </div>
+              {/* 枠番 */}
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">枠番</div>
+                <div className={`text-sm font-bold ${frameColor}`}>{frameLabel}({trackBias.frame_bias > 0 ? '+' : ''}{trackBias.frame_bias.toFixed(1)})</div>
+                <div className="mt-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-full relative overflow-hidden">
+                  <div className="absolute inset-0 flex">
+                    <div className="h-full bg-gradient-to-r from-red-400 via-gray-300 to-blue-400 dark:from-red-500 dark:via-gray-500 dark:to-blue-500 w-full opacity-40" />
+                  </div>
+                  <div className="absolute top-0 h-full w-2.5 bg-gray-800 dark:bg-white rounded-full -translate-x-1/2 shadow" style={{ left: `${clamp(-trackBias.frame_bias)}%` }} />
+                </div>
+                <div className="flex justify-between text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  <span>内有利</span><span>外有利</span>
+                </div>
+              </div>
+              {/* 脚質 */}
+              <div className="text-center">
+                <div className="text-[10px] text-gray-400 dark:text-gray-500 mb-1">脚質</div>
+                <div className={`text-sm font-bold ${paceColor}`}>{paceLabel}({trackBias.pace_bias > 0 ? '+' : ''}{trackBias.pace_bias.toFixed(1)})</div>
+                <div className="mt-1 h-2 bg-gray-200 dark:bg-gray-600 rounded-full relative overflow-hidden">
+                  <div className="absolute inset-0 flex">
+                    <div className="h-full bg-gradient-to-r from-red-400 via-gray-300 to-blue-400 dark:from-red-500 dark:via-gray-500 dark:to-blue-500 w-full opacity-40" />
+                  </div>
+                  <div className="absolute top-0 h-full w-2.5 bg-gray-800 dark:bg-white rounded-full -translate-x-1/2 shadow" style={{ left: `${clamp(-trackBias.pace_bias)}%` }} />
+                </div>
+                <div className="flex justify-between text-[9px] text-gray-400 dark:text-gray-500 mt-0.5">
+                  <span>先行有利</span><span>差し有利</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        )
+      })()}
 
       {/* タブ */}
       <div className="flex gap-1 border-b border-gray-200 dark:border-gray-700">

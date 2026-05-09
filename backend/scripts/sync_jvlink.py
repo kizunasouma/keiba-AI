@@ -50,8 +50,11 @@ _SENTINEL = None  # キュー終端マーカー
 def _start_bridge(dataspec: str, fromtime: str, option: int) -> subprocess.Popen:
     """ブリッジプロセスを起動（C#版優先、なければPython 32bit版にフォールバック）"""
     env = os.environ.copy()
-    # JV-Link設定はレジストリから自動読取させる（環境変数は渡さない）
-    # ※ 環境変数経由だとJVSetServiceKeyが-101エラーになるケースがあるため
+    # .envの設定を環境変数としてC#ブリッジに渡す（UNKNOWNや空文字はスキップ）
+    if settings.jvlink_service_key and settings.jvlink_service_key != "UNKNOWN":
+        env["JVLINK_SERVICE_KEY"] = settings.jvlink_service_key
+    if settings.jvlink_software_id and settings.jvlink_software_id != "UNKNOWN":
+        env["JVLINK_SOFTWARE_ID"] = settings.jvlink_software_id
     if settings.jvlink_save_path:
         env["JVLINK_SAVE_PATH"] = settings.jvlink_save_path
 
@@ -243,7 +246,10 @@ def run_rt_odds(race_key: str) -> None:
     import io
 
     env = os.environ.copy()
-    # JV-Link設定はレジストリから自動読取させる
+    if settings.jvlink_service_key and settings.jvlink_service_key != "UNKNOWN":
+        env["JVLINK_SERVICE_KEY"] = settings.jvlink_service_key
+    if settings.jvlink_software_id and settings.jvlink_software_id != "UNKNOWN":
+        env["JVLINK_SOFTWARE_ID"] = settings.jvlink_software_id
     if settings.jvlink_save_path:
         env["JVLINK_SAVE_PATH"] = settings.jvlink_save_path
 

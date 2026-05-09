@@ -201,6 +201,11 @@ export async function fetchTrainingRating(raceKey: string) {
   return callApi(async () => (await apiClient.get('/stats/training_rating', { params: { race_key: raceKey } })).data)
 }
 
+// --- トラックバイアス詳細 ---
+export async function fetchTrackBiasDetail(raceDate: string, venueCode: string) {
+  return callApi(async () => (await apiClient.get('/stats/track_bias_detail', { params: { race_date: raceDate, venue_code: venueCode } })).data)
+}
+
 // --- エクスポート ---
 export function getExportUrl(raceKey: string) { return `${BASE_URL}/export/race/${raceKey}` }
 

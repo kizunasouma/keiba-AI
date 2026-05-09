@@ -122,12 +122,19 @@ class Program
         }
         Log($"JVInit: {ret}");
 
-        // JVSetServiceKey（利用キー）— エラーでもJVOpenは通る場合があるため続行
+        // JVSetServiceKey（利用キー）— ハイフン付き/なし両方を試行
         if (!string.IsNullOrEmpty(serviceKey))
         {
-            string key = serviceKey.Replace("-", "");
-            int skRet = jv.JVSetServiceKey(key);
-            Log($"JVSetServiceKey: {skRet}");
+            // まずハイフンなし（17文字）で試行
+            string keyNoHyphen = serviceKey.Replace("-", "");
+            int skRet = jv.JVSetServiceKey(keyNoHyphen);
+            Log($"JVSetServiceKey (no hyphen, {keyNoHyphen.Length}chars): {skRet}");
+            if (skRet != 0)
+            {
+                // ハイフン付き（21文字）で再試行
+                skRet = jv.JVSetServiceKey(serviceKey);
+                Log($"JVSetServiceKey (with hyphen, {serviceKey.Length}chars): {skRet}");
+            }
         }
 
         // JVSetSavePath（保存パス）

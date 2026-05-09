@@ -122,6 +122,11 @@ FEATURE_COLS = [
     "recent_win_trend",          # 直近成績のトレンド（上昇=正, 下降=負）
     "jockey_trainer_combo_rate", # 騎手×調教師コンビ勝率
     "pace_style_fit",            # 脚質×展開適合度スコア
+    # ── v7追加: トラックバイアス拡張 ──
+    "frame_bias_score",          # 枠番バイアス（正=内枠有利、負=外枠有利）
+    "pace_bias_score",           # 脚質バイアス（正=先行有利、負=差し有利）
+    "horse_bias_fit",            # バイアス×自馬の適合度
+    "past_bias_impact",          # 過去走でバイアスに助けられた度合い
 ]
 
 # オッズなし特徴量（後方互換用、FEATURE_COLSと同一）
@@ -347,6 +352,16 @@ def build_training_dataset(db: Session) -> pd.DataFrame:
         if "jockey_trainer_combo_rate" not in df.columns:
             df["jockey_trainer_combo_rate"] = 0.0
     df = _add_v6_pace_style_fit(df)
+    # v7追加: トラックバイアス拡張
+    if not _skip_heavy:
+        df = _add_frame_bias_score(db, df)
+        df = _add_pace_bias_score(db, df)
+        df = _add_past_bias_impact(db, df)
+    else:
+        for col in ["frame_bias_score", "pace_bias_score", "horse_bias_fit", "past_bias_impact"]:
+            if col not in df.columns:
+                df[col] = 0.0
+    df = _add_horse_bias_fit(df)
 
     # 全特徴量カラムを数値型に強制変換（バッチ結合時のobject型混入対策）
     for col in FEATURE_COLS:
@@ -410,6 +425,11 @@ def build_prediction_features(db: Session, race_key: str) -> pd.DataFrame:
     df = _add_v6_trend_features(db, df)
     df = _add_v6_jockey_trainer_combo(db, df)
     df = _add_v6_pace_style_fit(df)
+    # v7追加: トラックバイアス拡張
+    df = _add_frame_bias_score(db, df)
+    df = _add_pace_bias_score(db, df)
+    df = _add_past_bias_impact(db, df)
+    df = _add_horse_bias_fit(df)
 
     # オッズ未確定時のインテリジェント代替（未勝利戦対応）
     df = _fill_missing_odds_signal(df)
@@ -1873,4 +1893,294 @@ def _add_v6_pace_style_fit(df: pd.DataFrame) -> pd.DataFrame:
     # style*pace_type: 先行(1)×スロー(1)=1(有利), 追込(-1)×ハイ(-1)=1(有利)
     df["pace_style_fit"] = (style * pace_type).fillna(0.0)
 
+    return df
+
+
+# ---------------------------------------------------------------------------
+# v7: トラックバイアス拡張（枠番バイアス・脚質バイアス・馬別適合度・過去走影響度）
+# ---------------------------------------------------------------------------
+
+def _add_frame_bias_score(db: Session, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    枠番バイアス: 内枠(1-4)と外枠(5-8)のoutperformance差分。
+    人気と着順の差分で実力差を除去し、純粋な枠番の有利不利を測定。
+    過去30日のベースラインと当日データをベイズ的に混合。
+    正=内枠有利、負=外枠有利。
+    """
+    if df.empty:
+        df["frame_bias_score"] = 0.0
+        return df
+
+    entry_ids = df["entry_id"].tolist()
+
+    sql = text("""
+        WITH curr AS (
+            SELECT DISTINCT ON (h.id)
+                h.id AS entry_id,
+                r.race_date, r.venue_code, r.track_type, r.track_cond
+            FROM race_entries h
+            JOIN races r ON r.id = h.race_id
+            WHERE h.id = ANY(:ids)
+        ),
+        base_perf AS (
+            /* 過去30日の同条件レースで、内外グループのoutperformance */
+            SELECT
+                c.entry_id,
+                AVG(CASE WHEN re.frame_num <= 4
+                    THEN re.popularity - re.finish_order END) AS inner_op,
+                AVG(CASE WHEN re.frame_num >= 5
+                    THEN re.popularity - re.finish_order END) AS outer_op,
+                COUNT(DISTINCT r2.id) AS base_cnt
+            FROM curr c
+            JOIN races r2 ON r2.venue_code = c.venue_code
+                          AND r2.track_type = c.track_type
+                          AND r2.track_cond = c.track_cond
+                          AND r2.race_date BETWEEN (c.race_date - 30) AND (c.race_date - 1)
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE re.finish_order IS NOT NULL AND re.popularity IS NOT NULL
+              AND COALESCE(re.abnormal_code, 0) = 0
+            GROUP BY c.entry_id
+        ),
+        today_perf AS (
+            /* 当日の同会場・同コース種別レースで同じ計算 */
+            SELECT
+                c.entry_id,
+                AVG(CASE WHEN re.frame_num <= 4
+                    THEN re.popularity - re.finish_order END) AS inner_op,
+                AVG(CASE WHEN re.frame_num >= 5
+                    THEN re.popularity - re.finish_order END) AS outer_op,
+                COUNT(DISTINCT r2.id) AS today_cnt
+            FROM curr c
+            JOIN races r2 ON r2.venue_code = c.venue_code
+                          AND r2.track_type = c.track_type
+                          AND r2.race_date = c.race_date
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE re.finish_order IS NOT NULL AND re.popularity IS NOT NULL
+              AND COALESCE(re.abnormal_code, 0) = 0
+            GROUP BY c.entry_id
+        )
+        SELECT
+            b.entry_id,
+            /* ベイズ的混合: 当日レース数が多いほど当日データの重みを増やす */
+            ROUND((
+                COALESCE(b.inner_op - b.outer_op, 0)
+                    * (1.0 - LEAST(COALESCE(t.today_cnt, 0)::float / 6.0, 0.5))
+                + COALESCE(t.inner_op - t.outer_op, 0)
+                    * LEAST(COALESCE(t.today_cnt, 0)::float / 6.0, 0.5)
+            )::numeric, 2) AS frame_bias_score
+        FROM base_perf b
+        LEFT JOIN today_perf t ON t.entry_id = b.entry_id
+    """)
+
+    try:
+        bias_df = _query_in_batches(db, sql, entry_ids)
+        df = _safe_merge(df, bias_df, on="entry_id")
+    except Exception:
+        pass
+
+    if "frame_bias_score" not in df.columns:
+        df["frame_bias_score"] = 0.0
+    df["frame_bias_score"] = pd.to_numeric(
+        df["frame_bias_score"], errors="coerce"
+    ).fillna(0.0)
+    return df
+
+
+def _add_pace_bias_score(db: Session, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    脚質バイアス: 先行馬(4角3位以内)と後方馬(4角後半)の上がり3F差。
+    先行馬の上がりが後方馬と同等→先行有利、後方馬の上がりが速い→差し有利。
+    過去30日のベースラインと当日データをベイズ的に混合。
+    正=先行有利、負=差し有利。
+    """
+    if df.empty:
+        df["pace_bias_score"] = 0.0
+        return df
+
+    entry_ids = df["entry_id"].tolist()
+
+    sql = text("""
+        WITH curr AS (
+            SELECT DISTINCT ON (h.id)
+                h.id AS entry_id,
+                r.race_date, r.venue_code, r.track_type, r.track_cond
+            FROM race_entries h
+            JOIN races r ON r.id = h.race_id
+            WHERE h.id = ANY(:ids)
+        ),
+        base_pace AS (
+            /* 過去30日: 先行馬と後方馬の上がり3F平均差 */
+            SELECT
+                c.entry_id,
+                AVG(CASE WHEN re.corner_4 <= 3 THEN re.last_3f END) AS front_3f,
+                AVG(CASE WHEN re.corner_4 > r2.horse_count / 2 THEN re.last_3f END) AS back_3f,
+                COUNT(DISTINCT r2.id) AS base_cnt
+            FROM curr c
+            JOIN races r2 ON r2.venue_code = c.venue_code
+                          AND r2.track_type = c.track_type
+                          AND r2.track_cond = c.track_cond
+                          AND r2.race_date BETWEEN (c.race_date - 30) AND (c.race_date - 1)
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE re.finish_order IS NOT NULL
+              AND re.corner_4 IS NOT NULL AND re.corner_4 > 0
+              AND re.last_3f IS NOT NULL AND re.last_3f > 0
+              AND COALESCE(re.abnormal_code, 0) = 0
+            GROUP BY c.entry_id
+        ),
+        today_pace AS (
+            /* 当日: 同じ計算 */
+            SELECT
+                c.entry_id,
+                AVG(CASE WHEN re.corner_4 <= 3 THEN re.last_3f END) AS front_3f,
+                AVG(CASE WHEN re.corner_4 > r2.horse_count / 2 THEN re.last_3f END) AS back_3f,
+                COUNT(DISTINCT r2.id) AS today_cnt
+            FROM curr c
+            JOIN races r2 ON r2.venue_code = c.venue_code
+                          AND r2.track_type = c.track_type
+                          AND r2.race_date = c.race_date
+            JOIN race_entries re ON re.race_id = r2.id
+            WHERE re.finish_order IS NOT NULL
+              AND re.corner_4 IS NOT NULL AND re.corner_4 > 0
+              AND re.last_3f IS NOT NULL AND re.last_3f > 0
+              AND COALESCE(re.abnormal_code, 0) = 0
+            GROUP BY c.entry_id
+        )
+        SELECT
+            b.entry_id,
+            /* 上がり3F差を反転 → 正=先行有利 */
+            ROUND((-(
+                COALESCE(b.front_3f - b.back_3f, 0)
+                    * (1.0 - LEAST(COALESCE(t.today_cnt, 0)::float / 6.0, 0.5))
+                + COALESCE(t.front_3f - t.back_3f, 0)
+                    * LEAST(COALESCE(t.today_cnt, 0)::float / 6.0, 0.5)
+            ))::numeric, 2) AS pace_bias_score
+        FROM base_pace b
+        LEFT JOIN today_pace t ON t.entry_id = b.entry_id
+    """)
+
+    try:
+        bias_df = _query_in_batches(db, sql, entry_ids)
+        df = _safe_merge(df, bias_df, on="entry_id")
+    except Exception:
+        pass
+
+    if "pace_bias_score" not in df.columns:
+        df["pace_bias_score"] = 0.0
+    df["pace_bias_score"] = pd.to_numeric(
+        df["pace_bias_score"], errors="coerce"
+    ).fillna(0.0)
+    return df
+
+
+def _add_horse_bias_fit(df: pd.DataFrame) -> pd.DataFrame:
+    """
+    バイアス×自馬の適合度: 今走のバイアスがその馬の枠番・脚質に有利かどうか。
+    DataFrame内計算のみ（SQLクエリ不要）。
+    """
+    if df.empty:
+        df["horse_bias_fit"] = 0.0
+        return df
+
+    frame_bias = df.get("frame_bias_score", pd.Series(0.0, index=df.index))
+    pace_bias = df.get("pace_bias_score", pd.Series(0.0, index=df.index))
+
+    # 枠番適合: 内枠(1-4) → +1、外枠(5-8) → -1
+    is_inner = (df["frame_num"].fillna(4) <= 4).astype(float) * 2 - 1
+    frame_fit = is_inner * frame_bias
+
+    # 脚質適合: 先行馬 → +1、追込馬 → -1
+    horse_count = df.get("horse_count", pd.Series(12, index=df.index)).clip(lower=6)
+    avg_corner = df.get("recent_avg_corner4", pd.Series(6.0, index=df.index)).fillna(6.0)
+    style_score = ((horse_count * 0.33 - avg_corner) / (horse_count * 0.33)).clip(-1, 1)
+    pace_fit = style_score * pace_bias
+
+    df["horse_bias_fit"] = ((frame_fit + pace_fit) / 2).fillna(0.0).round(3)
+    return df
+
+
+def _add_past_bias_impact(db: Session, df: pd.DataFrame) -> pd.DataFrame:
+    """
+    過去走バイアス影響度: 過去3走でその馬がバイアスに助けられた/邪魔された度合い。
+    正=過去走でバイアスに助けられていた（実力割引）、
+    負=バイアスに邪魔されていた（上振れ余地あり）。
+    """
+    if df.empty:
+        df["past_bias_impact"] = 0.0
+        return df
+
+    entry_ids = df["entry_id"].tolist()
+
+    sql = text("""
+        WITH curr AS (
+            SELECT h.id AS entry_id, h.horse_id, r.race_date
+            FROM race_entries h
+            JOIN races r ON r.id = h.race_id
+            WHERE h.id = ANY(:ids) AND h.horse_id IS NOT NULL
+        ),
+        past_runs AS (
+            /* 対象馬の過去3走 */
+            SELECT
+                c.entry_id,
+                re.frame_num, re.corner_4, re.finish_order, re.popularity,
+                r2.venue_code, r2.track_type, r2.race_date, r2.horse_count,
+                ROW_NUMBER() OVER (
+                    PARTITION BY c.entry_id ORDER BY r2.race_date DESC
+                ) AS rn
+            FROM curr c
+            JOIN race_entries re ON re.horse_id = c.horse_id
+            JOIN races r2 ON r2.id = re.race_id
+            WHERE r2.race_date < c.race_date
+              AND re.finish_order IS NOT NULL
+              AND COALESCE(re.abnormal_code, 0) = 0
+        ),
+        past_bias AS (
+            /* 各過去走の当日バイアスをその日の他レース結果から算出 */
+            SELECT
+                pr.entry_id,
+                /* 枠番バイアス */
+                AVG(CASE WHEN re2.frame_num <= 4
+                    THEN re2.popularity - re2.finish_order END)
+                - AVG(CASE WHEN re2.frame_num >= 5
+                    THEN re2.popularity - re2.finish_order END) AS day_frame_bias,
+                /* 脚質バイアス（上がり3F差を反転） */
+                -(AVG(CASE WHEN re2.corner_4 <= 3 THEN re2.last_3f END)
+                - AVG(CASE WHEN re2.corner_4 > r3.horse_count / 2 THEN re2.last_3f END))
+                    AS day_pace_bias,
+                /* 自分の位置情報 */
+                pr.frame_num, pr.corner_4, pr.horse_count
+            FROM past_runs pr
+            JOIN races r3 ON r3.venue_code = pr.venue_code
+                          AND r3.track_type = pr.track_type
+                          AND r3.race_date = pr.race_date
+            JOIN race_entries re2 ON re2.race_id = r3.id
+            WHERE re2.finish_order IS NOT NULL
+              AND COALESCE(re2.abnormal_code, 0) = 0
+              AND pr.rn <= 3
+            GROUP BY pr.entry_id, pr.frame_num, pr.corner_4, pr.horse_count
+        )
+        SELECT
+            entry_id,
+            ROUND(AVG(
+                (CASE WHEN frame_num <= 4 THEN 1.0 ELSE -1.0 END)
+                    * COALESCE(day_frame_bias, 0)
+                + (CASE WHEN corner_4 <= GREATEST(horse_count * 0.33, 3) THEN 1.0
+                        WHEN corner_4 > horse_count * 0.5 THEN -1.0
+                        ELSE 0.0 END)
+                    * COALESCE(day_pace_bias, 0)
+            )::numeric, 3) AS past_bias_impact
+        FROM past_bias
+        GROUP BY entry_id
+    """)
+
+    try:
+        bias_df = _query_in_batches(db, sql, entry_ids)
+        df = _safe_merge(df, bias_df, on="entry_id")
+    except Exception:
+        pass
+
+    if "past_bias_impact" not in df.columns:
+        df["past_bias_impact"] = 0.0
+    df["past_bias_impact"] = pd.to_numeric(
+        df["past_bias_impact"], errors="coerce"
+    ).fillna(0.0)
     return df
