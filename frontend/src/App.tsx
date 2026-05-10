@@ -22,6 +22,9 @@ import JockeyDetail from './components/JockeyDetail'
 import TrainerDetail from './components/TrainerDetail'
 import StatusBar from './components/StatusBar'
 import ActionButtons, { ProgressProvider, ProgressBar } from './components/ActionButtons'
+import SetupWizard from './components/SetupWizard'
+import SettingsDialog from './components/SettingsDialog'
+import { fetchSetupStatus } from './api/client'
 
 const queryClient = new QueryClient({
   defaultOptions: { queries: { retry: 1, staleTime: 30_000 } },
@@ -147,7 +150,45 @@ export default function App() {
     return <PopupApp type={popupParams.type} id={popupParams.id} />
   }
 
-  // 通常モード
+  // 通常モード（セットアップ状態を確認）
+  return <AppWithSetupCheck />
+}
+
+/** セットアップ状態を確認し、未完了ならウィザードを表示 */
+function AppWithSetupCheck() {
+  const [setupCompleted, setSetupCompleted] = useState<boolean | null>(null)
+  const [dark] = useState(() => localStorage.getItem('theme') === 'dark')
+
+  // ダークモード初期適用
+  useEffect(() => {
+    document.documentElement.classList.toggle('dark', dark)
+  }, [dark])
+
+  // セットアップ状態を確認
+  useEffect(() => {
+    fetchSetupStatus()
+      .then(data => setSetupCompleted(data.setup_completed))
+      .catch(() => {
+        // APIに接続できない場合はメイン画面を表示（後方互換性）
+        setSetupCompleted(true)
+      })
+  }, [])
+
+  // 読み込み中
+  if (setupCompleted === null) {
+    return (
+      <div className="min-h-screen bg-gray-50 dark:bg-gray-900 flex items-center justify-center">
+        <div className="animate-spin rounded-full h-10 w-10 border-b-2 border-emerald-500" />
+      </div>
+    )
+  }
+
+  // セットアップ未完了 → ウィザード表示
+  if (!setupCompleted) {
+    return <SetupWizard onComplete={() => setSetupCompleted(true)} />
+  }
+
+  // セットアップ完了 → メインアプリ表示
   return <MainApp />
 }
 
@@ -156,6 +197,7 @@ function MainApp() {
   const wm = useWindowManager()
   const [dark, setDark] = useState(() => localStorage.getItem('theme') === 'dark')
   const [nav, setNav] = useState<NavMode>('races')
+  const [showSettings, setShowSettings] = useState(false)
 
   useEffect(() => {
     document.documentElement.classList.toggle('dark', dark)
@@ -205,6 +247,14 @@ function MainApp() {
           </div>
           <div className="flex items-center gap-3">
             <ActionButtons />
+            <button onClick={() => setShowSettings(true)}
+              className="p-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
+              title="設定">
+              <svg className="w-4 h-4" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z" />
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M15 12a3 3 0 11-6 0 3 3 0 016 0z" />
+              </svg>
+            </button>
             <button onClick={() => setDark(!dark)} className="p-1.5 rounded-lg bg-gray-800 text-gray-400 hover:text-white"
               title={dark ? 'ライトモード' : 'ダークモード'}>
               {dark ? <svg className="w-4 h-4" fill="currentColor" viewBox="0 0 20 20"><path d="M10 2a1 1 0 011 1v1a1 1 0 11-2 0V3a1 1 0 011-1zm4 8a4 4 0 11-8 0 4 4 0 018 0zm-.464 4.95l.707.707a1 1 0 001.414-1.414l-.707-.707a1 1 0 00-1.414 1.414zm2.12-10.607a1 1 0 010 1.414l-.706.707a1 1 0 11-1.414-1.414l.707-.707a1 1 0 011.414 0zM17 11a1 1 0 100-2h-1a1 1 0 100 2h1zm-7 4a1 1 0 011 1v1a1 1 0 11-2 0v-1a1 1 0 011-1zM5.05 6.464A1 1 0 106.465 5.05l-.708-.707a1 1 0 00-1.414 1.414l.707.707zm1.414 8.486l-.707.707a1 1 0 01-1.414-1.414l.707-.707a1 1 0 011.414 1.414zM4 11a1 1 0 100-2H3a1 1 0 000 2h1z" /></svg>
@@ -257,6 +307,9 @@ function MainApp() {
             </div>
           )}
         </div>
+
+        {/* 設定ダイアログ */}
+        {showSettings && <SettingsDialog onClose={() => setShowSettings(false)} />}
       </div>
       </ProgressProvider>
     </QueryClientProvider>
