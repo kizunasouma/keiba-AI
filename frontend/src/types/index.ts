@@ -128,19 +128,21 @@ export interface StatColumn {
 }
 
 // --- トラックバイアス ---
+export interface BiasAxis {
+  score: number
+  label: string
+  sample_races: number
+}
+
 export interface TrackBiasDetail {
-  venue_code: string
-  race_date: string
-  /** 馬場速度バイアス（負=高速、正=重い） */
-  bias: number
   /** 枠番バイアス（正=内枠有利、負=外枠有利） */
-  frame_bias: number
+  frame_bias: BiasAxis
   /** 脚質バイアス（正=先行有利、負=差し有利） */
-  pace_bias: number
-  /** サンプルレース数 */
-  sample_count: number
-  /** 分析対象日数 */
-  analysis_days: number
+  pace_bias: BiasAxis
+  /** 信頼度（高/中/低） */
+  confidence: string
+  /** サマリー文 */
+  summary: string
 }
 
 // --- 会場コード ---
