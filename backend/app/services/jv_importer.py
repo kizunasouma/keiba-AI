@@ -11,6 +11,7 @@ import logging
 from datetime import datetime, date as date_type
 from typing import Any
 
+from sqlalchemy import func
 from sqlalchemy.dialects.postgresql import insert
 from sqlalchemy.orm import Session
 
@@ -294,19 +295,20 @@ def _save_se_bulk(db: Session, records: list[dict], cache: IdCache) -> tuple[int
                 "blood_reg_num": stmt.excluded.blood_reg_num,
                 "jockey_code":  stmt.excluded.jockey_code,
                 "trainer_code": stmt.excluded.trainer_code,
-                "finish_order": stmt.excluded.finish_order,
-                "finish_time":  stmt.excluded.finish_time,
-                "last_3f":      stmt.excluded.last_3f,
-                "odds_win":     stmt.excluded.odds_win,
-                "odds_place_min": stmt.excluded.odds_place_min,
-                "odds_place_max": stmt.excluded.odds_place_max,
-                "popularity":   stmt.excluded.popularity,
+                # 結果系カラム: 0でない場合のみ上書き（未確定SEレコードで確定値を消さない）
+                "finish_order": func.coalesce(func.nullif(stmt.excluded.finish_order, 0), RaceEntry.finish_order),
+                "finish_time":  func.coalesce(func.nullif(stmt.excluded.finish_time, 0), RaceEntry.finish_time),
+                "last_3f":      func.coalesce(func.nullif(stmt.excluded.last_3f, 0), RaceEntry.last_3f),
+                "odds_win":     func.coalesce(func.nullif(stmt.excluded.odds_win, 0), RaceEntry.odds_win),
+                "odds_place_min": func.coalesce(func.nullif(stmt.excluded.odds_place_min, 0), RaceEntry.odds_place_min),
+                "odds_place_max": func.coalesce(func.nullif(stmt.excluded.odds_place_max, 0), RaceEntry.odds_place_max),
+                "popularity":   func.coalesce(func.nullif(stmt.excluded.popularity, 0), RaceEntry.popularity),
                 "horse_weight": stmt.excluded.horse_weight,
                 "weight_diff":  stmt.excluded.weight_diff,
-                "corner_1":     stmt.excluded.corner_1,
-                "corner_2":     stmt.excluded.corner_2,
-                "corner_3":     stmt.excluded.corner_3,
-                "corner_4":     stmt.excluded.corner_4,
+                "corner_1":     func.coalesce(func.nullif(stmt.excluded.corner_1, 0), RaceEntry.corner_1),
+                "corner_2":     func.coalesce(func.nullif(stmt.excluded.corner_2, 0), RaceEntry.corner_2),
+                "corner_3":     func.coalesce(func.nullif(stmt.excluded.corner_3, 0), RaceEntry.corner_3),
+                "corner_4":     func.coalesce(func.nullif(stmt.excluded.corner_4, 0), RaceEntry.corner_4),
                 # SE拡張フィールド（v4追加）
                 "blinker_code":     stmt.excluded.blinker_code,
                 "prev_jockey_code": stmt.excluded.prev_jockey_code,
