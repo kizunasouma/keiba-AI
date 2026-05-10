@@ -6,7 +6,7 @@ import { useState, useMemo } from 'react'
 import { useQuery } from '@tanstack/react-query'
 import { fetchRaces, fetchPredictions, fetchEntries, fetchBacktestSummary } from '../api/client'
 import { toFullWidth } from '../utils/format'
-import type { RaceInfo, PredictionItem, PredictionResponse, BacktestSummary, BetHistoryItem, DailyResult } from '../types'
+import type { RaceInfo, PredictionItem, PredictionResponse, BacktestSummary, BetHistoryItem, DailyResult, BettingTicket } from '../types'
 
 /** レース横断の予測アイテム（PredictionItem + レース情報） */
 interface RankedPrediction extends PredictionItem {
@@ -321,6 +321,9 @@ export default function AIPredictionView({ onOpenRace }: Props) {
             </div>
           </section>
 
+          {/* === 今日のAI推奨馬券一覧 === */}
+          <TodayBettingPlanSection predResults={predQueries.data ?? []} onOpenRace={onOpenRace} />
+
           {/* === サマリー統計 === */}
           <section>
             <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
@@ -555,6 +558,129 @@ function BacktestSection() {
           )}
         </div>
       ) : null}
+    </section>
+  )
+}
+
+/** 今日のAI推奨馬券一覧セクション — race_betting_plan.tickets を全レース横断で表示 */
+function TodayBettingPlanSection({ predResults, onOpenRace }: { predResults: PredResult[]; onOpenRace: (raceKey: string, title?: string) => void }) {
+  // 全レースの推奨馬券をフラット化
+  const allTickets = useMemo(() => {
+    const items: {
+      raceKey: string; raceLabel: string; raceName: string | null
+      ticket: BettingTicket
+    }[] = []
+    for (const { raceKey, race, predictions } of predResults) {
+      if (!predictions?.race_betting_plan?.tickets) continue
+      const vn = VENUE[race?.venue_code] ?? ''
+      const label = `${vn}${race?.race_num}R`
+      for (const ticket of predictions.race_betting_plan.tickets) {
+        items.push({
+          raceKey,
+          raceLabel: label,
+          raceName: race?.race_name,
+          ticket,
+        })
+      }
+    }
+    // 期待値の高い順にソート
+    return items.sort((a, b) => b.ticket.expected_value - a.ticket.expected_value)
+  }, [predResults])
+
+  // 合計投資額・合計期待リターン
+  const totalInvest = allTickets.reduce((s, t) => s + t.ticket.amount, 0)
+  const totalExpectedReturn = allTickets.reduce((s, t) => s + t.ticket.amount * (1 + t.ticket.expected_value), 0)
+
+  if (allTickets.length === 0) return null
+
+  return (
+    <section>
+      <h2 className="text-lg font-bold text-gray-900 dark:text-white mb-3 flex items-center gap-2">
+        <span className="w-1 h-5 bg-cyan-500 rounded-full" />
+        今日のAI推奨馬券
+        <span className="text-xs text-gray-500 font-normal ml-2">{allTickets.length}点</span>
+      </h2>
+      <div className="bg-white dark:bg-gray-800 rounded-xl border border-gray-200 dark:border-gray-700 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="min-w-[800px] w-full text-sm">
+            <thead>
+              <tr className="text-xs text-gray-500 dark:text-gray-400 border-b border-gray-200 dark:border-gray-700 bg-gray-50 dark:bg-gray-700/40">
+                <th className="px-3 py-2 text-left">レース</th>
+                <th className="px-3 py-2 text-center">券種</th>
+                <th className="px-3 py-2 text-center">組み合わせ</th>
+                <th className="px-3 py-2 text-right">推奨金額</th>
+                <th className="px-3 py-2 text-right">期待値</th>
+                <th className="px-3 py-2 text-right">信頼度</th>
+              </tr>
+            </thead>
+            <tbody>
+              {allTickets.map((item, i) => {
+                const ev = item.ticket.expected_value
+                const isPositive = ev > 0
+                // 券種に応じた色分け
+                const typeColor: Record<string, string> = {
+                  '単勝': 'bg-emerald-100 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300',
+                  '複勝': 'bg-green-100 dark:bg-green-900/40 text-green-700 dark:text-green-300',
+                  '馬連': 'bg-blue-100 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300',
+                  '三連複': 'bg-purple-100 dark:bg-purple-900/40 text-purple-700 dark:text-purple-300',
+                }
+                return (
+                  <tr key={`${item.raceKey}-${item.ticket.bet_type}-${item.ticket.horses.join(',')}-${i}`}
+                    className={`border-t border-gray-100 dark:border-gray-700/50 cursor-pointer hover:bg-gray-50 dark:hover:bg-gray-700/30 ${
+                      isPositive ? '' : 'opacity-60'
+                    }`}
+                    onClick={() => onOpenRace(item.raceKey, `${item.raceLabel} ${item.raceName ?? ''}`)}>
+                    {/* レース名 */}
+                    <td className="px-3 py-2">
+                      <div className="text-gray-700 dark:text-gray-300 font-medium">{item.raceLabel}</div>
+                      <div className="text-[10px] text-gray-500">{item.raceName}</div>
+                    </td>
+                    {/* 券種 */}
+                    <td className="px-3 py-2 text-center">
+                      <span className={`px-2 py-0.5 rounded text-xs font-bold ${typeColor[item.ticket.bet_type] || 'bg-gray-100 dark:bg-gray-700 text-gray-500 dark:text-gray-400'}`}>
+                        {item.ticket.bet_type}
+                      </span>
+                    </td>
+                    {/* 組み合わせ（馬番） */}
+                    <td className="px-3 py-2 text-center font-bold font-mono text-gray-900 dark:text-white">
+                      {item.ticket.horses.join(' - ')}
+                    </td>
+                    {/* 推奨金額 */}
+                    <td className="px-3 py-2 text-right font-bold text-gray-900 dark:text-white">
+                      ¥{item.ticket.amount.toLocaleString()}
+                    </td>
+                    {/* 期待値 */}
+                    <td className={`px-3 py-2 text-right font-bold ${isPositive ? 'text-emerald-500 dark:text-emerald-400' : 'text-gray-400 dark:text-gray-500'}`}>
+                      {isPositive ? '+' : ''}{ev.toFixed(3)}
+                    </td>
+                    {/* 信頼度 */}
+                    <td className="px-3 py-2 text-right text-xs text-gray-500 dark:text-gray-400">
+                      {(item.ticket.confidence * 100).toFixed(0)}%
+                    </td>
+                  </tr>
+                )
+              })}
+            </tbody>
+            {/* 合計行 */}
+            <tfoot>
+              <tr className="border-t-2 border-gray-300 dark:border-gray-600 bg-gray-50 dark:bg-gray-700/60 font-bold">
+                <td className="px-3 py-2 text-gray-900 dark:text-white" colSpan={3}>
+                  合計（{allTickets.length}点）
+                </td>
+                <td className="px-3 py-2 text-right text-gray-900 dark:text-white">
+                  ¥{totalInvest.toLocaleString()}
+                </td>
+                <td className={`px-3 py-2 text-right ${totalExpectedReturn >= totalInvest ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                  ¥{Math.round(totalExpectedReturn).toLocaleString()}
+                </td>
+                <td className={`px-3 py-2 text-right text-xs ${totalExpectedReturn >= totalInvest ? 'text-emerald-500 dark:text-emerald-400' : 'text-red-500 dark:text-red-400'}`}>
+                  ROI {totalInvest > 0 ? (totalExpectedReturn / totalInvest * 100).toFixed(1) : '0.0'}%
+                </td>
+              </tr>
+            </tfoot>
+          </table>
+        </div>
+      </div>
     </section>
   )
 }
