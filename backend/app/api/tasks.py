@@ -109,14 +109,16 @@ def _run_sync_background():
         from app.core.database import SessionLocal as SyncSession
         sync_db = SyncSession()
         try:
+            # 直近7日間のオッズ未取得レースを対象（過去開催分も含む）
+            since_str = (datetime.now() - timedelta(days=7)).strftime("%Y-%m-%d")
             today_str = datetime.now().strftime("%Y-%m-%d")
             no_odds_races = sync_db.execute(text("""
                 SELECT DISTINCT r.race_key
                 FROM races r
                 JOIN race_entries re ON re.race_id = r.id
-                WHERE r.race_date = :today AND re.odds_win = 0
+                WHERE r.race_date BETWEEN :since AND :today AND re.odds_win = 0
                 ORDER BY r.race_key
-            """), {"today": today_str}).fetchall()
+            """), {"since": since_str, "today": today_str}).fetchall()
             race_keys = [row[0] for row in no_odds_races]
         finally:
             sync_db.close()
