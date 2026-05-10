@@ -583,25 +583,25 @@ class EnsembleModel:
         oof_ranker = np.zeros(n_samples)
         oof_catboost = np.zeros(n_samples)
 
-        # --- 1. LightGBM Classifier（オッズあり）+ OOF予測収集 ---
-        print("\n  --- LightGBM Classifier（オッズあり）---")
+        # --- 1. LightGBM Classifier（メイン: オッズなし特徴量で学習）---
+        # オッズ/人気は他ファクターの集約値であり、モデルがオッズに過度に依存する問題を解消
+        # 期待値計算時にオッズを掛けるため、予測確率自体はオッズに依存させない
+        print("\n  --- LightGBM Classifier（オッズなし = メインモデル）---")
         self._lgbm_classifier, lgbm_aucs, oof_lgbm = self._train_lgbm_classifier_with_oof(
-            df, FEATURE_COLS, kf, groups,
+            df, FEATURE_COLS_NO_ODDS, kf, groups,
             sample_weights=sample_weights,
             use_optuna=use_optuna, n_trials=n_trials,
         )
         lgbm_mean_auc = float(np.mean(lgbm_aucs))
         print(f"  CV AUC: {lgbm_mean_auc:.4f} ± {np.std(lgbm_aucs):.4f}")
 
-        # --- 2. LightGBM Classifier（オッズなし）+ OOF予測収集 ---
-        print("\n  --- LightGBM Classifier（オッズなし）---")
-        self._lgbm_no_odds, no_odds_aucs, oof_no_odds = self._train_lgbm_classifier_with_oof(
-            df, FEATURE_COLS_NO_ODDS, kf, groups,
-            sample_weights=sample_weights,
-            use_optuna=use_optuna, n_trials=n_trials,
-        )
-        no_odds_mean_auc = float(np.mean(no_odds_aucs))
-        print(f"  CV AUC: {no_odds_mean_auc:.4f} ± {np.std(no_odds_aucs):.4f}")
+        # --- 2. LightGBM Classifier（オッズなし: 後方互換用、メインと同一）---
+        print("\n  --- LightGBM Classifier（オッズなし = メインと同一）---")
+        self._lgbm_no_odds = self._lgbm_classifier
+        no_odds_aucs = lgbm_aucs
+        oof_no_odds = oof_lgbm.copy()
+        no_odds_mean_auc = lgbm_mean_auc
+        print(f"  CV AUC: {no_odds_mean_auc:.4f}（メインモデルと同一）")
 
         # --- 3. LightGBM Ranker（LambdaRank）+ OOF予測収集 ---
         print("\n  --- LightGBM Ranker（LambdaRank）---")

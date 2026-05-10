@@ -290,77 +290,44 @@ def build_training_dataset(db: Session) -> pd.DataFrame:
     if "finish_order" in df.columns and "horse_count" in df.columns:
         df[RANK_TARGET_COL] = (df["horse_count"] - df["finish_order"]).clip(lower=0)
 
-    # 追加特徴量を計算
-    # 大量データ判定を先に行い、重いクエリをスキップ
-    _skip_heavy = len(df) > 10000  # 学習データ（大量）の場合はスキップ
+    # 追加特徴量を計算（全特徴量をバッチ処理で計算、_skip_heavy廃止）
+    # v1-v2: 基本特徴量
     df = _add_recent_form(db, df)
     df = _add_race_interval(db, df)
     df = _add_jockey_change(db, df)
     df = _add_course_aptitude(db, df)
     df = _add_lineage_features(df)
     df = _add_training_features(db, df)
-    df = _add_combo_features(db, df, skip_heavy=_skip_heavy)
-    # v5追加: 騎手・調教師・馬の成績を直近期間で上書き（精度向上施策）
-    # 学習時は大量データのため重いサブクエリをスキップ
-    if not _skip_heavy:
-        df = _add_recent_jockey_stats(db, df, years=3)
-        df = _add_recent_trainer_stats(db, df, years=3)
-        df = _add_weighted_horse_stats(db, df)
-    # v3追加特徴量（学習時は重いクエリをスキップしデフォルト値を使用）
-    # 推論時（build_prediction_features）では少数レコードなので実行可能
-    if not _skip_heavy:
-        df = _add_track_bias_score(db, df)
-        df = _add_race_pace_score(db, df)
-        df = _add_pace_change_index(db, df)
-        df = _add_lineage_track_aptitude(db, df)
-    else:
-        # デフォルト値で埋める（学習時の高速化）
-        for col, default in [("track_bias_score", 0.0), ("race_pace_score", 50.0),
-                             ("pace_change_index", 100.0), ("lineage_track_aptitude", 0.0)]:
-            if col not in df.columns:
-                df[col] = default
-    df = _add_upset_score(db, df)  # これはSQL不要（DataFrame内計算のみ）
-    df = _add_training_rating_score(db, df) if not _skip_heavy else df.assign(training_rating_score=50.0) if "training_rating_score" not in df.columns else df
-    # v4追加: SEパーサー拡張由来
+    df = _add_combo_features(db, df)
+    # v2.5: 騎手・調教師・馬の直近成績
+    df = _add_recent_jockey_stats(db, df, years=3)
+    df = _add_recent_trainer_stats(db, df, years=3)
+    df = _add_weighted_horse_stats(db, df)
+    # v3: 展開・馬場・血統適性
+    df = _add_track_bias_score(db, df)
+    df = _add_race_pace_score(db, df)
+    df = _add_upset_score(db, df)
+    df = _add_training_rating_score(db, df)
+    df = _add_pace_change_index(db, df)
+    df = _add_lineage_track_aptitude(db, df)
+    # v4: SEパーサー拡張由来
     df = _add_se_extended_features(df)
-    # v5追加: フェーズ1拡張（+20項目）
+    # v5: フェーズ1拡張（+20項目）
     df = _add_v5_odds_features(df)
     df = _add_v5_weight_features(df)
-    if not _skip_heavy:
-        df = _add_v5_corner_features(db, df)
-        df = _add_v5_performance_features(db, df)
-        df = _add_v5_venue_cond_aptitude(db, df)
-    else:
-        # 学習時のデフォルト値
-        for col, val in [("recent_avg_corner1", 8.0), ("recent_corner_improvement", 0.0),
-                         ("recent_corner4_std", 3.0), ("recent_avg_margin", 5.0),
-                         ("recent_speed_index_std", 5.0), ("recent_best_speed_index", 0.0),
-                         ("recent_last_3f_best", 0.0), ("same_venue_win_rate", 0.0),
-                         ("track_cond_aptitude", 0.0)]:
-            if col not in df.columns:
-                df[col] = val
+    df = _add_v5_corner_features(db, df)
+    df = _add_v5_performance_features(db, df)
     df = _add_v5_jockey_trainer_efficiency(df)
+    df = _add_v5_venue_cond_aptitude(db, df)
     df = _add_v5_race_condition_features(df)
-    # v6追加
-    if not _skip_heavy:
-        df = _add_v6_trend_features(db, df)
-        df = _add_v6_jockey_trainer_combo(db, df)
-    else:
-        # 学習時（大量データ）は重いクエリをスキップしデフォルト値を使用
-        if "recent_win_trend" not in df.columns:
-            df["recent_win_trend"] = 0.0
-        if "jockey_trainer_combo_rate" not in df.columns:
-            df["jockey_trainer_combo_rate"] = 0.0
+    # v6: 精度向上特徴量
+    df = _add_v6_trend_features(db, df)
+    df = _add_v6_jockey_trainer_combo(db, df)
     df = _add_v6_pace_style_fit(df)
-    # v7追加: トラックバイアス拡張
-    if not _skip_heavy:
-        df = _add_frame_bias_score(db, df)
-        df = _add_pace_bias_score(db, df)
-        df = _add_past_bias_impact(db, df)
-    else:
-        for col in ["frame_bias_score", "pace_bias_score", "horse_bias_fit", "past_bias_impact"]:
-            if col not in df.columns:
-                df[col] = 0.0
+    # v7: トラックバイアス拡張
+    df = _add_frame_bias_score(db, df)
+    df = _add_pace_bias_score(db, df)
+    df = _add_past_bias_impact(db, df)
     df = _add_horse_bias_fit(df)
 
     # 全特徴量カラムを数値型に強制変換（バッチ結合時のobject型混入対策）
