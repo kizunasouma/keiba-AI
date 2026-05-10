@@ -18,7 +18,7 @@ from sqlalchemy import text
 from sqlalchemy.orm import Session
 
 # SQLパラメータ上限対策: entry_idsをバッチ分割してクエリ実行
-_BATCH_IDS = 50000  # 1回のSQLに渡すID数の上限
+_BATCH_IDS = 200000  # 1回のSQLに渡すID数の上限（学習時高速化のため拡大）
 
 
 def _query_in_batches(db: Session, sql: text, ids: list, id_param: str = "ids") -> pd.DataFrame:
@@ -292,80 +292,59 @@ def build_training_dataset(db: Session) -> pd.DataFrame:
     if "finish_order" in df.columns and "horse_count" in df.columns:
         df[RANK_TARGET_COL] = (df["horse_count"] - df["finish_order"]).clip(lower=0)
 
-    # 追加特徴量を計算
-    # 大量データ判定: 重いSQLクエリ（DB参照系）はスキップし、推論時のみ計算
-    # DataFrame内計算（SQL不要）の関数は常に実行
-    _skip_heavy = len(df) > 10000
+    # 追加特徴量を計算（全特徴量をバッチ処理で計算）
+    print(f"  特徴量計算開始（{len(df):,}件）...")
+    import time as _t
+    _t0 = _t.time()
 
-    # v1-v2: 基本特徴量（軽量SQLクエリ — 常に実行）
+    # v1-v2: 基本特徴量
     df = _add_recent_form(db, df)
     df = _add_race_interval(db, df)
     df = _add_jockey_change(db, df)
     df = _add_course_aptitude(db, df)
     df = _add_lineage_features(df)
     df = _add_training_features(db, df)
-    df = _add_combo_features(db, df, skip_heavy=_skip_heavy)
+    df = _add_combo_features(db, df)
+    print(f"  v1-v2完了: {_t.time()-_t0:.0f}秒")
 
-    # v2.5-v3: 重いSQLクエリ — 学習時はデフォルト値
-    if not _skip_heavy:
-        df = _add_recent_jockey_stats(db, df, years=3)
-        df = _add_recent_trainer_stats(db, df, years=3)
-        df = _add_weighted_horse_stats(db, df)
-        df = _add_track_bias_score(db, df)
-        df = _add_race_pace_score(db, df)
-        df = _add_pace_change_index(db, df)
-        df = _add_lineage_track_aptitude(db, df)
-    else:
-        for col, val in [("track_bias_score", 0.0), ("race_pace_score", 50.0),
-                         ("pace_change_index", 100.0), ("lineage_track_aptitude", 0.0)]:
-            if col not in df.columns:
-                df[col] = val
+    # v2.5: 騎手・調教師・馬の直近成績
+    df = _add_recent_jockey_stats(db, df, years=3)
+    df = _add_recent_trainer_stats(db, df, years=3)
+    df = _add_weighted_horse_stats(db, df)
+    print(f"  v2.5完了: {_t.time()-_t0:.0f}秒")
 
-    # DataFrame内計算（SQL不要 — 常に実行）
+    # v3: 展開・馬場・血統適性
+    df = _add_track_bias_score(db, df)
+    df = _add_race_pace_score(db, df)
     df = _add_upset_score(db, df)
-    df = _add_training_rating_score(db, df) if not _skip_heavy else df.assign(training_rating_score=50.0) if "training_rating_score" not in df.columns else df
+    df = _add_training_rating_score(db, df)
+    df = _add_pace_change_index(db, df)
+    df = _add_lineage_track_aptitude(db, df)
+    print(f"  v3完了: {_t.time()-_t0:.0f}秒")
+
+    # v4-v5: SE拡張 + フェーズ1拡張
     df = _add_se_extended_features(df)
     df = _add_v5_odds_features(df)
     df = _add_v5_weight_features(df)
+    df = _add_v5_corner_features(db, df)
+    df = _add_v5_performance_features(db, df)
     df = _add_v5_jockey_trainer_efficiency(df)
+    df = _add_v5_venue_cond_aptitude(db, df)
     df = _add_v5_race_condition_features(df)
+    print(f"  v4-v5完了: {_t.time()-_t0:.0f}秒")
 
-    # v5重いSQL — 学習時はデフォルト値
-    if not _skip_heavy:
-        df = _add_v5_corner_features(db, df)
-        df = _add_v5_performance_features(db, df)
-        df = _add_v5_venue_cond_aptitude(db, df)
-    else:
-        for col, val in [("recent_avg_corner1", 8.0), ("recent_corner_improvement", 0.0),
-                         ("recent_corner4_std", 3.0), ("recent_avg_margin", 5.0),
-                         ("recent_speed_index_std", 5.0), ("recent_best_speed_index", 0.0),
-                         ("recent_last_3f_best", 0.0), ("same_venue_win_rate", 0.0),
-                         ("track_cond_aptitude", 0.0)]:
-            if col not in df.columns:
-                df[col] = val
+    # v6: 精度向上特徴量
+    df = _add_v6_trend_features(db, df)
+    df = _add_v6_jockey_trainer_combo(db, df)
+    df = _add_v6_pace_style_fit(df)
+    print(f"  v6完了: {_t.time()-_t0:.0f}秒")
 
-    # v6: 重いSQL — 学習時はデフォルト値
-    if not _skip_heavy:
-        df = _add_v6_trend_features(db, df)
-        df = _add_v6_jockey_trainer_combo(db, df)
-    else:
-        if "recent_win_trend" not in df.columns:
-            df["recent_win_trend"] = 0.0
-        if "jockey_trainer_combo_rate" not in df.columns:
-            df["jockey_trainer_combo_rate"] = 0.0
-
-    df = _add_v6_pace_style_fit(df)  # DataFrame内計算
-
-    # v7: トラックバイアス — 重いSQL、学習時はデフォルト値
-    if not _skip_heavy:
-        df = _add_frame_bias_score(db, df)
-        df = _add_pace_bias_score(db, df)
-        df = _add_past_bias_impact(db, df)
-    else:
-        for col in ["frame_bias_score", "pace_bias_score", "past_bias_impact"]:
-            if col not in df.columns:
-                df[col] = 0.0
-    df = _add_horse_bias_fit(df)  # DataFrame内計算
+    # v7: トラックバイアス拡張
+    df = _add_frame_bias_score(db, df)
+    df = _add_pace_bias_score(db, df)
+    df = _add_past_bias_impact(db, df)
+    df = _add_horse_bias_fit(df)
+    print(f"  v7完了: {_t.time()-_t0:.0f}秒 — 全特徴量計算完了")
 
     # 全特徴量カラムを数値型に強制変換（バッチ結合時のobject型混入対策）
     for col in FEATURE_COLS:
