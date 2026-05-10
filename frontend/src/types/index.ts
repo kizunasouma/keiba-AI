@@ -145,6 +145,27 @@ export interface TrackBiasDetail {
   summary: string
 }
 
+// --- 設定 ---
+export interface AppSettings {
+  database_url: string
+  jvlink_service_key: string
+  jvlink_software_id: string
+  jvlink_save_path: string
+  setup_completed: boolean
+  config_file_path: string
+}
+
+export interface SetupStatus {
+  setup_completed: boolean
+}
+
+export interface JVLinkStatus {
+  jvlink_installed: boolean
+  jvlink_version: string | null
+  agent_running: boolean
+  error_message: string | null
+}
+
 // --- 会場コード ---
 export const VENUE: Record<string, string> = {
   '01': '札幌', '02': '函館', '03': '福島', '04': '新潟', '05': '東京',

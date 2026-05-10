@@ -115,29 +115,62 @@ function createPopupWindow(type: string, id: string): void {
 }
 
 // ---------------------------------------------------------------------------
-// Docker コンテナ起動
+// データベース起動（Docker優先 → ローカルPostgreSQL検出 → エラー）
 // ---------------------------------------------------------------------------
-function ensureDocker(): boolean {
+function ensureDatabase(): { ok: boolean; mode: 'docker' | 'local' | 'none' } {
+  // 1. Dockerコンテナ（keiba_db）の確認・起動
   try {
     const status = execSync('docker ps --filter name=keiba_db --format "{{.Status}}"', {
       encoding: 'utf-8',
       timeout: 10000,
     }).trim()
     if (status) {
-      console.log('[Docker] keiba_db は起動済み')
-      return true
+      console.log('[DB] Docker keiba_db は起動済み')
+      return { ok: true, mode: 'docker' }
     }
-  } catch { /* docker ps 失敗 = Docker未起動 */ }
+  } catch { /* Docker未インストール or 未起動 */ }
 
   try {
-    console.log('[Docker] keiba_db を起動中...')
     execSync('docker start keiba_db', { encoding: 'utf-8', timeout: 30000 })
-    console.log('[Docker] keiba_db 起動完了')
-    return true
+    console.log('[DB] Docker keiba_db 起動完了')
+    return { ok: true, mode: 'docker' }
+  } catch { /* keiba_dbコンテナが存在しない */ }
+
+  // 2. ローカルPostgreSQLの検出（pg_isready コマンドで確認）
+  try {
+    execSync('pg_isready -U keiba_user -d keiba_db -h localhost -p 5432', {
+      encoding: 'utf-8',
+      timeout: 5000,
+    })
+    console.log('[DB] ローカルPostgreSQLを検出')
+    return { ok: true, mode: 'local' }
+  } catch { /* ローカルPostgreSQLなし */ }
+
+  // 3. ポータブルPostgreSQLの起動（将来のインストーラー同梱用）
+  const pgPortablePath = path.join(PROJECT_ROOT, 'pgsql', 'bin', 'pg_ctl.exe')
+  try {
+    const fs = require('fs')
+    if (fs.existsSync(pgPortablePath)) {
+      const pgDataDir = path.join(PROJECT_ROOT, 'pgdata')
+      if (!fs.existsSync(pgDataDir)) {
+        // 初回: initdb実行
+        console.log('[DB] ポータブルPostgreSQL初期化中...')
+        execSync(`"${path.join(PROJECT_ROOT, 'pgsql', 'bin', 'initdb.exe')}" -D "${pgDataDir}" -U keiba_user --encoding=UTF8`, {
+          encoding: 'utf-8', timeout: 30000,
+        })
+      }
+      console.log('[DB] ポータブルPostgreSQL起動中...')
+      execSync(`"${pgPortablePath}" -D "${pgDataDir}" -l "${path.join(PROJECT_ROOT, 'logs', 'postgresql.log')}" start`, {
+        encoding: 'utf-8', timeout: 15000,
+      })
+      return { ok: true, mode: 'local' }
+    }
   } catch (e) {
-    console.error('[Docker] keiba_db 起動失敗:', e)
-    return false
+    console.error('[DB] ポータブルPostgreSQL起動失敗:', e)
   }
+
+  console.error('[DB] データベースが見つかりません')
+  return { ok: false, mode: 'none' }
 }
 
 // ---------------------------------------------------------------------------
@@ -258,16 +291,26 @@ app.whenReady().then(async () => {
     }
   })
 
-  // 1. Docker 起動
-  const dockerOk = ensureDocker()
-  if (!dockerOk) {
-    dialog.showErrorBox(
-      'DB起動失敗',
-      'Docker Desktop が起動していないか、keiba_db コンテナが存在しません。\n'
-      + 'Docker Desktop を起動してから再度お試しください。',
-    )
-    app.quit()
-    return
+  // 1. データベース起動（Docker → ローカルPostgreSQL → ポータブル）
+  const dbResult = ensureDatabase()
+  if (!dbResult.ok) {
+    const result = dialog.showMessageBoxSync({
+      type: 'warning',
+      title: 'データベース未検出',
+      message: 'PostgreSQLデータベースが見つかりません。\n\n'
+        + '以下のいずれかの方法でデータベースを準備してください：\n'
+        + '• Docker Desktop を起動して keiba_db コンテナを起動\n'
+        + '• PostgreSQL をローカルにインストール\n\n'
+        + 'データベースなしで起動しますか？（一部機能が制限されます）',
+      buttons: ['データベースなしで起動', '終了'],
+      defaultId: 1,
+    })
+    if (result === 1) {
+      app.quit()
+      return
+    }
+  } else {
+    console.log(`[DB] モード: ${dbResult.mode}`)
   }
 
   // 2. APIサーバー起動（既に起動中なら省略）

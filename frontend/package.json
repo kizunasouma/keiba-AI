@@ -52,12 +52,24 @@
   "build": {
     "appId": "com.keiba-ai.app",
     "productName": "競馬AI予測",
+    "copyright": "Copyright © 2026 kizunasouma",
     "directories": {
       "output": "release"
     },
     "win": {
       "target": "nsis",
       "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "競馬AI予測",
+      "uninstallDisplayName": "競馬AI予測",
+      "installerLanguages": ["ja"],
+      "language": "1041"
     },
     "files": [
       "dist/**/*",

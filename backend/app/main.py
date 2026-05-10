@@ -41,6 +41,7 @@ from app.api.betting import router as betting_router
 from app.api.favorites import router as favorites_router
 from app.api.export import router as export_router
 from app.api.tasks import router as tasks_router
+from app.api.tasks import settings_router
 
 # アプリインスタンス
 app = FastAPI(
@@ -82,3 +83,4 @@ app.include_router(betting_router)
 app.include_router(favorites_router)
 app.include_router(export_router)
 app.include_router(tasks_router)
+app.include_router(settings_router)

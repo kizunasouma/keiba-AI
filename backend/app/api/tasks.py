@@ -15,7 +15,13 @@ from fastapi import APIRouter, Depends
 from sqlalchemy.orm import Session
 from sqlalchemy import text
 
+from pydantic import BaseModel
+from typing import Optional
+
 from app.core.database import get_db
+from app.core.config import (
+    settings, save_config, is_setup_completed, get_config_for_display,
+)
 
 logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/tasks", tags=["tasks"])
@@ -349,4 +355,112 @@ def db_summary(db: Session = Depends(get_db)):
         "entries": row[2],
         "horses": row[3],
         "training": row[4],
+    }
+
+
+# ==============================================================
+# 設定API — セットアップウィザード・設定画面から利用
+# ==============================================================
+
+# 設定ルーター（/settings プレフィックス）
+settings_router = APIRouter(prefix="/settings", tags=["settings"])
+
+
+class SettingsUpdateRequest(BaseModel):
+    """設定更新リクエスト"""
+    database_url: Optional[str] = None
+    jvlink_service_key: Optional[str] = None
+    jvlink_software_id: Optional[str] = None
+    jvlink_save_path: Optional[str] = None
+
+
+@settings_router.get("")
+def get_settings():
+    """現在の設定を返す（パスワードはマスク済み）"""
+    return get_config_for_display()
+
+
+@settings_router.post("")
+def update_settings(req: SettingsUpdateRequest):
+    """設定を config.json に保存する"""
+    updates = {}
+    if req.database_url is not None:
+        updates["database_url"] = req.database_url
+    if req.jvlink_service_key is not None:
+        updates["jvlink_service_key"] = req.jvlink_service_key
+    if req.jvlink_software_id is not None:
+        updates["jvlink_software_id"] = req.jvlink_software_id
+    if req.jvlink_save_path is not None:
+        updates["jvlink_save_path"] = req.jvlink_save_path
+
+    if not updates:
+        return {"status": "no_changes", "message": "変更する項目がありません"}
+
+    save_config(updates)
+    return {"status": "saved", "message": "設定を保存しました", "settings": get_config_for_display()}
+
+
+@settings_router.get("/setup-status")
+def get_setup_status():
+    """セットアップ完了済みかどうかを返す"""
+    return {"setup_completed": is_setup_completed()}
+
+
+@settings_router.post("/complete-setup")
+def complete_setup():
+    """セットアップ完了フラグを立てる"""
+    save_config({"setup_completed": True})
+    return {"status": "completed", "message": "セットアップを完了しました"}
+
+
+@settings_router.get("/check-jvlink")
+def check_jvlink():
+    """
+    JV-Linkがインストールされているか確認する。
+    COMオブジェクト（JVDTLab.JVLink）の存在をレジストリから確認。
+    """
+    import winreg
+
+    jvlink_installed = False
+    jvlink_version = None
+    error_message = None
+
+    try:
+        # JVDTLab.JVLink COMオブジェクトのレジストリキーを確認
+        with winreg.OpenKey(winreg.HKEY_CLASSES_ROOT, r"JVDTLab.JVLink") as key:
+            jvlink_installed = True
+
+        # バージョン情報を取得（取れなくてもOK）
+        try:
+            with winreg.OpenKey(
+                winreg.HKEY_CLASSES_ROOT, r"JVDTLab.JVLink\CurVer"
+            ) as key:
+                jvlink_version = winreg.QueryValue(key, None)
+        except OSError:
+            jvlink_version = "不明"
+
+    except OSError:
+        jvlink_installed = False
+        error_message = "JV-LinkのCOMオブジェクトが見つかりません。JV-Linkをインストールしてください。"
+    except ImportError:
+        # Windows以外の環境
+        jvlink_installed = False
+        error_message = "Windows環境でのみJV-Linkを確認できます。"
+
+    # JVLinkAgent サービスの状態確認
+    agent_running = False
+    try:
+        result = subprocess.run(
+            ["sc", "query", "JVLinkAgent"],
+            capture_output=True, text=True, timeout=5,
+        )
+        agent_running = "RUNNING" in result.stdout
+    except Exception:
+        pass
+
+    return {
+        "jvlink_installed": jvlink_installed,
+        "jvlink_version": jvlink_version,
+        "agent_running": agent_running,
+        "error_message": error_message,
     }

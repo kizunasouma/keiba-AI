@@ -240,3 +240,23 @@ export async function fetchDbSummary() {
 export async function fetchHealth() {
   return callApi(async () => (await apiClient.get('/health/db')).data)
 }
+
+// --- 設定 ---
+export async function fetchSettings() {
+  return callApi(async () => (await apiClient.get('/settings')).data)
+}
+export async function updateSettings(data: {
+  database_url?: string; jvlink_service_key?: string
+  jvlink_software_id?: string; jvlink_save_path?: string
+}) {
+  return callApi(async () => (await apiClient.post('/settings', data)).data)
+}
+export async function fetchSetupStatus() {
+  return callApi(async () => (await apiClient.get('/settings/setup-status')).data)
+}
+export async function completeSetup() {
+  return callApi(async () => (await apiClient.post('/settings/complete-setup')).data)
+}
+export async function checkJVLink() {
+  return callApi(async () => (await apiClient.get('/settings/check-jvlink')).data)
+}
