@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>競馬AI予測 - 使い方ガイド</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', 'Yu Gothic', 'Meiryo', sans-serif; background: #f8fafc; color: #1e293b; line-height: 1.8; }
+  .container { max-width: 900px; margin: 0 auto; padding: 40px 24px; }
+  h1 { font-size: 2rem; font-weight: 800; margin-bottom: 8px; color: #059669; }
+  h1 small { font-size: 0.9rem; color: #64748b; font-weight: 400; display: block; margin-top: 4px; }
+  h2 { font-size: 1.4rem; font-weight: 700; margin: 48px 0 16px; padding-left: 12px; border-left: 4px solid #059669; color: #0f172a; }
+  h3 { font-size: 1.1rem; font-weight: 600; margin: 24px 0 8px; color: #334155; }
+  p { margin-bottom: 12px; color: #475569; }
+  img { width: 100%; border-radius: 12px; box-shadow: 0 4px 24px rgba(0,0,0,0.1); margin: 16px 0 24px; border: 1px solid #e2e8f0; }
+  .badge { display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 600; }
+  .badge-green { background: #d1fae5; color: #065f46; }
+  .badge-blue { background: #dbeafe; color: #1e40af; }
+  .badge-amber { background: #fef3c7; color: #92400e; }
+  .badge-red { background: #fee2e2; color: #991b1b; }
+  .badge-purple { background: #ede9fe; color: #5b21b6; }
+  .tip { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .tip::before { content: '💡 '; }
+  .warn { background: #fffbeb; border: 1px solid #fde68a; border-radius: 8px; padding: 12px 16px; margin: 16px 0; }
+  .warn::before { content: '⚠️ '; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0 20px; font-size: 0.9rem; }
+  th, td { padding: 8px 12px; text-align: left; border-bottom: 1px solid #e2e8f0; }
+  th { background: #f1f5f9; font-weight: 600; color: #334155; }
+  .toc { background: #fff; border: 1px solid #e2e8f0; border-radius: 12px; padding: 24px; margin: 24px 0; }
+  .toc h3 { margin-top: 0; }
+  .toc ol { padding-left: 20px; }
+  .toc li { margin: 4px 0; }
+  .toc a { color: #059669; text-decoration: none; }
+  .toc a:hover { text-decoration: underline; }
+  .mark-table td:first-child { font-size: 1.2rem; text-align: center; width: 40px; }
+  .nav-top { position: sticky; top: 0; background: #fff; border-bottom: 1px solid #e2e8f0; padding: 8px 24px; z-index: 10; }
+  .nav-top a { color: #059669; text-decoration: none; font-size: 0.85rem; margin-right: 16px; }
+  footer { text-align: center; padding: 40px 0; color: #94a3b8; font-size: 0.8rem; }
+</style>
+</head>
+<body>
+
+<div class="nav-top">
+  <a href="#quick">クイックスタート</a>
+  <a href="#dashboard">ダッシュボード</a>
+  <a href="#race">レース詳細</a>
+  <a href="#ai">AI予想</a>
+  <a href="#stats">統計DB</a>
+  <a href="#faq">FAQ</a>
+</div>
+
+<div class="container">
+
+<h1>競馬AI予測 使い方ガイド
+<small>JV-Link公式データ × 機械学習で馬券の期待値を予測するアプリケーション</small>
+</h1>
+
+<!-- 目次 -->
+<div class="toc">
+<h3>目次</h3>
+<ol>
+  <li><a href="#quick">クイックスタート</a></li>
+  <li><a href="#dashboard">レースダッシュボード</a></li>
+  <li><a href="#race">レース詳細の見方</a></li>
+  <li><a href="#ai-marks">AI予測の印（◎○▲△☆）</a></li>
+  <li><a href="#bias">トラックバイアスの読み方</a></li>
+  <li><a href="#ai">AI予想画面</a></li>
+  <li><a href="#stats">統計DB</a></li>
+  <li><a href="#search">検索・お気に入り</a></li>
+  <li><a href="#settings">設定・データ更新</a></li>
+  <li><a href="#faq">よくある質問（FAQ）</a></li>
+</ol>
+</div>
+
+<!-- 1. クイックスタート -->
+<h2 id="quick">1. クイックスタート</h2>
+<p>アプリを起動すると、レースダッシュボードが表示されます。画面上部の5つのタブで画面を切り替えます。</p>
+
+<table>
+<tr><th>タブ</th><th>機能</th></tr>
+<tr><td><span class="badge badge-green">レース</span></td><td>今週のレース一覧。レースカードをクリックで詳細表示</td></tr>
+<tr><td><span class="badge badge-blue">AI予想</span></td><td>AIによる期待値ランキング。全レース横断で有望馬を表示</td></tr>
+<tr><td><span class="badge badge-purple">統計DB</span></td><td>種牡馬別・母父別・枠番別・人気別の統計データ</td></tr>
+<tr><td><span class="badge badge-amber">お気に入り</span></td><td>注目馬の登録・出走予定チェック</td></tr>
+<tr><td>検索</td><td>馬名・騎手名・調教師名・レース名で検索</td></tr>
+</table>
+
+<div class="tip">右上の「データ最新化」ボタンを押すと、JV-Linkから最新のレースデータ・オッズ・結果を取得します。レース当日は発走前に必ず最新化してください。</div>
+
+<!-- 2. ダッシュボード -->
+<h2 id="dashboard">2. レースダッシュボード</h2>
+<img src="images/01_dashboard.png" alt="ダッシュボード画面">
+
+<h3>週タブ</h3>
+<p>「2週前」「前週」「今週」「来週」から選択。競馬は土日に開催されるため、各週の土日レースが表示されます。</p>
+
+<h3>重賞ハイライト</h3>
+<p>画面上部に重賞レースが大きなカードで表示されます。色分けの意味：</p>
+<table>
+<tr><th>色</th><th>グレード</th></tr>
+<tr><td><span class="badge badge-amber">G1</span></td><td>G1レース（天皇賞、日本ダービー等）</td></tr>
+<tr><td><span class="badge badge-red">G2</span></td><td>G2レース</td></tr>
+<tr><td><span class="badge badge-green">G3</span></td><td>G3レース</td></tr>
+<tr><td><span class="badge badge-blue">OP</span></td><td>オープン・リステッド</td></tr>
+</table>
+
+<h3>場別レース一覧</h3>
+<p>各競馬場（東京・京都・新潟等）ごとに12レースが並びます。レースカードには以下が表示されます：</p>
+<ul style="padding-left: 20px; margin-bottom: 16px;">
+  <li><strong>R番号・発走時刻</strong>（緑色）</li>
+  <li><strong>レース名</strong>（重賞・特別戦のみ）</li>
+  <li><strong>コース情報</strong>（芝/ダート、距離、ハンデ等）</li>
+  <li><strong>赤い「H」マーク</strong> = ハイペース予想（先行馬が多い）</li>
+</ul>
+
+<!-- 3. レース詳細 -->
+<h2 id="race">3. レース詳細の見方</h2>
+<img src="images/02_race_detail.png" alt="レース詳細画面">
+
+<h3>上部情報エリア</h3>
+<p>レース名、開催日、発走時刻、コース情報が表示されます。「1番人気」には現在の1番人気馬とオッズが表示されます。</p>
+
+<h3>AI PREDICTION（AI予測サマリー）</h3>
+<p>AIが予測した上位5頭が印付きで表示されます。各カードには：</p>
+<ul style="padding-left: 20px; margin-bottom: 16px;">
+  <li><strong>枠番の色</strong>（1枠=白、2枠=黒、3枠=赤...）</li>
+  <li><strong>馬名</strong></li>
+  <li><strong>勝率</strong>（AIが予測した勝つ確率）</li>
+  <li><strong>EV</strong>（期待値 = 勝率×オッズ - 1。プラスなら買い、マイナスなら見送り）</li>
+</ul>
+
+<!-- AI印 -->
+<h2 id="ai-marks">4. AI予測の印（◎○▲△☆）</h2>
+<table class="mark-table">
+<tr><th>印</th><th>意味</th><th>説明</th></tr>
+<tr><td>◎</td><td>本命</td><td>AIが最も勝率が高いと予測した馬</td></tr>
+<tr><td>○</td><td>対抗</td><td>2番目に高い勝率の馬</td></tr>
+<tr><td>▲</td><td>単穴</td><td>3番目。穴として注目</td></tr>
+<tr><td>△</td><td>連下</td><td>4番目。2着・3着候補</td></tr>
+<tr><td>☆</td><td>注意</td><td>5番目。展開次第で上位に来る可能性</td></tr>
+</table>
+
+<h3>勝率とEV（期待値）の違い</h3>
+<p><strong>勝率</strong>はAIが予測した「その馬が1着になる確率」。<strong>EV（期待値）</strong>は「勝率 × オッズ - 1」で計算され、<strong>馬券としての価値</strong>を表します。</p>
+<div class="tip">EV（期待値）がプラスの馬を買い続けると、長期的にプラス収支になる理論です。勝率が低くても高配当で期待値がプラスなら「買い」判定になります。</div>
+
+<h3>出馬表タブ</h3>
+<p>出馬表は「馬番順」「オッズ順」「人気順」「着順」「AI期待値順」でソートできます。各行をクリックすると展開して詳細情報（血統、過去走、調教評価）が表示されます。</p>
+
+<h3>過去走の見方（前走1〜3）</h3>
+<p>各馬の直近3走が横に並びます。表示内容：</p>
+<ul style="padding-left: 20px; margin-bottom: 16px;">
+  <li><strong>日付/場名</strong>（例: 02/22 東）</li>
+  <li><strong>着順</strong>（赤背景=1着、オレンジ=2-3着）</li>
+  <li><strong>コース/距離</strong></li>
+  <li><strong>上がり3F</strong>（△36.8 など）</li>
+</ul>
+
+<!-- トラックバイアス -->
+<h2 id="bias">5. トラックバイアスの読み方</h2>
+<img src="images/03_ai_summary_bias.png" alt="トラックバイアスカード">
+
+<p>トラックバイアスは「その日のコースの偏り」を表します。2つの軸で分析：</p>
+
+<h3>枠番バイアス</h3>
+<table>
+<tr><th>表示</th><th>意味</th></tr>
+<tr><td><strong>内枠有利（+）</strong></td><td>1〜4枠の馬が人気以上に好走。内枠を重視</td></tr>
+<tr><td><strong>均等（±0）</strong></td><td>枠番による有利不利なし</td></tr>
+<tr><td><strong>外枠有利（-）</strong></td><td>5〜8枠の馬が人気以上に好走。外枠を重視</td></tr>
+</table>
+
+<h3>脚質バイアス</h3>
+<table>
+<tr><th>表示</th><th>意味</th></tr>
+<tr><td><strong>先行有利（+）</strong></td><td>逃げ・先行馬が残りやすい馬場。前に行ける馬を重視</td></tr>
+<tr><td><strong>均等（±0）</strong></td><td>展開次第でどの脚質も可能性あり</td></tr>
+<tr><td><strong>差し有利（-）</strong></td><td>後方から差す馬が届きやすい馬場。上がりの速い馬を重視</td></tr>
+</table>
+
+<div class="tip">信頼度が「高」（サンプル10レース以上）なら参考にできます。「低」の場合はデータ不足のため過信は禁物です。</div>
+
+<!-- AI予想画面 -->
+<h2 id="ai">6. AI予想画面</h2>
+<img src="images/04_ai_prediction.png" alt="AI予想画面">
+
+<h3>期待値ランキング TOP20</h3>
+<p>全レースを横断して、AIが最も有望と判断した馬のランキングです。ソート基準は「√勝率 × (1 + EV)」の複合スコア。勝率だけでなく、穴馬の期待値も考慮したバランスの取れたランキングです。</p>
+
+<h3>レース別 推奨買い目</h3>
+<p>各レースについて、AIが推奨する買い目が表示されます。EV+（期待値プラス）の馬を軸にした単勝・馬連・三連複の組み合わせです。</p>
+
+<h3>今日のAI推奨馬券一覧</h3>
+<p>全レースの推奨買い目をまとめた一覧表。券種、組み合わせ、推奨金額、期待値が一目でわかります。</p>
+
+<!-- 統計DB -->
+<h2 id="stats">7. 統計DB</h2>
+<img src="images/05_stats.png" alt="統計DB画面">
+
+<p>過去のレースデータを統計的に分析する画面です。5つのタブ：</p>
+
+<table>
+<tr><th>タブ</th><th>用途</th></tr>
+<tr><td><strong>種牡馬別</strong></td><td>父馬の系統ごとの勝率・連対率を確認。芝/ダート切替可</td></tr>
+<tr><td><strong>母父別</strong></td><td>母の父の系統ごとの成績。配合相性の確認に</td></tr>
+<tr><td><strong>枠番別</strong></td><td>会場ごとの枠番有利不利を数値で確認</td></tr>
+<tr><td><strong>人気別</strong></td><td>人気ごとの勝率・回収率。穴馬の期待値を確認</td></tr>
+<tr><td><strong>データマイニング</strong></td><td>複合条件（コース×距離×馬場×枠番×種牡馬等）で検索</td></tr>
+</table>
+
+<div class="tip">データマイニングでは「重馬場の京都ダート1800m、内枠、先行馬」のような複合条件で過去の成績を調べられます。特殊条件のレースで威力を発揮します。</div>
+
+<!-- 検索・お気に入り -->
+<h2 id="search">8. 検索・お気に入り</h2>
+<img src="images/06_search.png" alt="検索画面">
+
+<h3>統合検索</h3>
+<p>馬名・騎手名・調教師名・レース名をまとめて検索。結果をクリックすると詳細画面が開きます。</p>
+
+<h3>お気に入り馬</h3>
+<img src="images/07_favorites.png" alt="お気に入り画面">
+<p>注目している馬をお気に入り登録すると、出走予定がダッシュボードのバナーに表示されます。馬の詳細画面の「お気に入りに追加」ボタンから登録できます。</p>
+
+<!-- 設定 -->
+<h2 id="settings">9. 設定・データ更新</h2>
+
+<h3>データ最新化ボタン</h3>
+<p>ヘッダー右上の<span class="badge badge-green">データ最新化</span>ボタンで以下を自動実行：</p>
+<ol style="padding-left: 20px; margin-bottom: 16px;">
+  <li>JV-Linkからレースデータの差分取得</li>
+  <li>確定オッズ・着順・払戻の取得</li>
+  <li>スピード指数の再計算</li>
+</ol>
+
+<h3>AI推奨生成ボタン</h3>
+<p><span class="badge badge-green">AI推奨生成</span>ボタンで、今週または今月のレースに対するAI予測を一括生成します。</p>
+
+<h3>設定画面</h3>
+<p>ヘッダーの歯車アイコンから設定画面を開けます。JV-Linkのサービスキー変更、データベース設定の確認ができます。</p>
+
+<!-- FAQ -->
+<h2 id="faq">10. よくある質問（FAQ）</h2>
+
+<h3>Q: レースデータが表示されません</h3>
+<p>A: 「データ最新化」ボタンを押してください。初回はJV-Linkからのデータ取込に数分かかります。JV-Linkがインストールされていない場合は、JRA-VAN公式サイトからインストールしてください。</p>
+
+<h3>Q: AI予測が「モデル未学習」と表示されます</h3>
+<p>A: AIモデルの学習が必要です。「AI推奨生成」ボタンを押すか、管理者にモデル学習の実行を依頼してください。</p>
+
+<h3>Q: オッズが反映されていません</h3>
+<p>A: オッズはJV-Linkのリアルタイムデータで取得されます。「データ最新化」ボタンを押してください。発売前のレースにはオッズが表示されません。</p>
+
+<h3>Q: トラックバイアスの信頼度が「低」です</h3>
+<p>A: サンプルレース数が5未満の場合に「低」と表示されます。開催日の後半（レースが進むにつれ）信頼度が上がります。開催初日は前の開催のデータも参考にしています。</p>
+
+<h3>Q: 深夜にデータ最新化が失敗します</h3>
+<p>A: JV-Linkのデータ配信サーバーは深夜帯（0:00〜6:00頃）にメンテナンスを行う場合があります。朝7時以降に再試行してください。</p>
+
+<div class="warn">このアプリの予測は統計的な分析に基づくものであり、的中を保証するものではありません。馬券の購入は自己責任でお願いします。</div>
+
+</div>
+
+<footer>
+  競馬AI予測 v1.0 — JRA-VAN Data Lab対応ソフト
+</footer>
+
+</body>
+</html>

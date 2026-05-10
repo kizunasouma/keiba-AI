@@ -390,7 +390,7 @@ function StepComplete({ onFinish }: { onFinish: () => void }) {
 
   return (
     <div className="text-center">
-      <div className="text-6xl mb-4">\u{1F389}</div>
+      <div className="text-6xl mb-4">{'🎉'}</div>
       <h2 className="text-2xl font-bold mb-4 dark:text-white text-gray-900">
         セットアップ完了！
       </h2>
