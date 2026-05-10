@@ -287,8 +287,8 @@ class SpecializedModel:
         self._models: dict[str, lgb.Booster] = {}
         # セグメント名 → CV AUC（効果検証用）
         self._segment_aucs: dict[str, float] = {}
-        # 使用する特徴量列（FEATURE_COLSと同じ）
-        self._feature_cols: list[str] = FEATURE_COLS
+        # 使用する特徴量列（オッズなし）
+        self._feature_cols: list[str] = FEATURE_COLS_NO_ODDS
 
     @property
     def is_trained(self) -> bool:
@@ -494,7 +494,7 @@ class SpecializedModel:
             data = pickle.load(f)
         self._models = data["models"]
         self._segment_aucs = data.get("segment_aucs", {})
-        self._feature_cols = data.get("feature_cols", FEATURE_COLS)
+        self._feature_cols = data.get("feature_cols", FEATURE_COLS_NO_ODDS)
         logger.info(f"特化モデルをロード: {list(self._models.keys())}")
 
 
@@ -628,7 +628,7 @@ class EnsembleModel:
         # 特徴量重要度（LightGBM Classifierのもの）
         if self._lgbm_classifier is not None:
             self._feature_importance = pd.DataFrame({
-                "feature": FEATURE_COLS,
+                "feature": self._lgbm_classifier.feature_name(),
                 "importance": self._lgbm_classifier.feature_importance(importance_type="gain"),
             }).sort_values("importance", ascending=False)
 
@@ -746,7 +746,8 @@ class EnsembleModel:
         sample_weights: 時間重み付けの配列（直近データを重視）
         use_optuna=True の場合、Optunaで主要パラメータをチューニングしてから学習する。
         """
-        X = df[FEATURE_COLS].copy()
+        # メインClassifierと同じ特徴量（オッズなし）で学習し、予測時の不整合を防ぐ
+        X = df[FEATURE_COLS_NO_ODDS].copy()
         y = df[RANK_TARGET_COL].copy()
         # ランキングラベルを0-18にクリップ（大頭数レースでラベル>18が発生しCVでエラーになるため）
         # int変換も必須（float状態だとLightGBMが内部で丸め処理を行いラベル範囲外エラーになる場合がある）
@@ -777,8 +778,8 @@ class EnsembleModel:
 
             # 時間重み付け（sample_weightsが指定されている場合）
             w_train = sample_weights[train_idx] if sample_weights is not None else None
-            dtrain = lgb.Dataset(X_train, label=y_train, weight=w_train, group=train_groups, feature_name=FEATURE_COLS)
-            dval = lgb.Dataset(X_val, label=y_val, group=val_groups, feature_name=FEATURE_COLS, reference=dtrain)
+            dtrain = lgb.Dataset(X_train, label=y_train, weight=w_train, group=train_groups, feature_name=FEATURE_COLS_NO_ODDS)
+            dval = lgb.Dataset(X_val, label=y_val, group=val_groups, feature_name=FEATURE_COLS_NO_ODDS, reference=dtrain)
 
             model = lgb.train(
                 params, dtrain,
@@ -821,7 +822,8 @@ class EnsembleModel:
             logger.warning("CatBoost未インストール。CatBoostモデルをスキップします。")
             return None, [], oof_preds
 
-        X = df[FEATURE_COLS].copy()
+        # メインClassifierと同じ特徴量（オッズなし）で学習
+        X = df[FEATURE_COLS_NO_ODDS].copy()
         y = df[TARGET_COL].copy()
 
         # Optunaでハイパーパラメータをチューニング（有効時のみ）
@@ -952,8 +954,8 @@ class EnsembleModel:
                 train_groups = _compute_group_sizes(race_keys_ordered[train_idx])
                 val_groups = _compute_group_sizes(race_keys_ordered[val_idx])
 
-                dtrain = lgb.Dataset(X_train, label=y_train, group=train_groups, feature_name=FEATURE_COLS)
-                dval = lgb.Dataset(X_val, label=y_val, group=val_groups, feature_name=FEATURE_COLS, reference=dtrain)
+                dtrain = lgb.Dataset(X_train, label=y_train, group=train_groups, feature_name=FEATURE_COLS_NO_ODDS)
+                dval = lgb.Dataset(X_val, label=y_val, group=val_groups, feature_name=FEATURE_COLS_NO_ODDS, reference=dtrain)
 
                 # PruningCallbackで不要な試行を早期打ち切り
                 pruning_callback = LightGBMPruningCallback(trial, "ndcg@5")

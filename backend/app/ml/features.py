@@ -280,7 +280,9 @@ def build_training_dataset(db: Session) -> pd.DataFrame:
         {_base_from_sql()}
 
         WHERE re.finish_order IS NOT NULL
+          AND re.finish_order > 0
           AND COALESCE(re.abnormal_code, 0) = 0
+          AND r.race_date >= CURRENT_DATE - INTERVAL '15 years'
         ORDER BY r.race_date, r.race_key, re.horse_num
     """)
 
