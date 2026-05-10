@@ -614,12 +614,14 @@ def predict_pace(
         if not positions and r["horse_id"]:
             # 過去3走のコーナー通過平均
             past = db.execute(text("""
-                SELECT AVG(re2.corner_4) AS avg_c4
-                FROM race_entries re2
-                JOIN races r2 ON r2.id = re2.race_id
-                WHERE re2.horse_id = :hid
-                  AND re2.corner_4 IS NOT NULL AND re2.corner_4 > 0
-                ORDER BY r2.race_date DESC LIMIT 3
+                SELECT AVG(sub.corner_4) FROM (
+                    SELECT re2.corner_4
+                    FROM race_entries re2
+                    JOIN races r2 ON r2.id = re2.race_id
+                    WHERE re2.horse_id = :hid
+                      AND re2.corner_4 IS NOT NULL AND re2.corner_4 > 0
+                    ORDER BY r2.race_date DESC LIMIT 3
+                ) sub
             """), {"hid": r["horse_id"]}).scalar()
             if past:
                 positions = [float(past)]
